@@ -9,22 +9,36 @@ const Node = ({ id, position: initialPosition, label, type, data, isSelected, on
     const [hovered, setHovered] = useState(false);
     const [position, setPosition] = useState(initialPosition);
     const [dragging, setDragging] = useState(false);
+    const [dragStartPos, setDragStartPos] = useState(null);
     const { camera, mouse } = useThree();
 
     useCursor(hovered);
 
     const onPointerDown = (e) => {
         e.stopPropagation();
+        setDragStartPos([mouse.x, mouse.y]);
         setDragging(true);
         onDragStart(); // Signal to ThreeScene to disable OrbitControls
         document.body.style.cursor = 'grabbing';
     };
 
-    const handleMeshClick = (e) => {
-        e.stopPropagation();
-        if (!dragging) {
-            console.log("Mesh clicked, selecting node:", data.label); // Debug log
-            onClick(data); // Only select if we're not dragging
+    const onPointerUp = (e) => {
+        if (dragging) {
+            // Check if this was a click (minimal mouse movement) or a drag
+            if (dragStartPos) {
+                const dragDistance = Math.sqrt(
+                    Math.pow(mouse.x - dragStartPos[0], 2) + 
+                    Math.pow(mouse.y - dragStartPos[1], 2)
+                );
+                if (dragDistance < 0.01) { // Small threshold for click vs drag
+                    console.log("Node clicked (via pointer up), selecting:", data.label);
+                    onClick(data);
+                }
+            }
+            setDragging(false);
+            setDragStartPos(null);
+            onDragEnd(); // Re-enable OrbitControls
+            document.body.style.cursor = 'auto';
         }
     };
 
@@ -42,12 +56,6 @@ const Node = ({ id, position: initialPosition, label, type, data, isSelected, on
         const newPos = [pos.x, pos.y, 0];
         setPosition(newPos);
         onPositionChange(id, newPos);
-    };
-
-    const onPointerUp = (e) => {
-        setDragging(false);
-        onDragEnd(); // Re-enable OrbitControls
-        document.body.style.cursor = 'auto';
     };
 
     useEffect(() => {
@@ -80,7 +88,6 @@ const Node = ({ id, position: initialPosition, label, type, data, isSelected, on
                 onPointerOver={() => setHovered(true)}
                 onPointerOut={() => setHovered(false)}
                 onPointerDown={onPointerDown}
-                onClick={handleMeshClick}
             >
                 <sphereGeometry args={[type === 'regulation' ? 0.15 : 0.08, 32, 32]} />
                 <meshStandardMaterial
