@@ -120,37 +120,47 @@ async def assess_compliance(
     )
     
     import asyncio
+    semaphore = asyncio.Semaphore(10)
     
     async def process_clause(c_clause):
-        # Retrieve similar regulation clauses
-        similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id)
-        
-        if not similar_docs:
-            print(f"DEBUG: No similarity found for clause {c_clause.clause_id}")
-            return None
+        async with semaphore:
+            # Retrieve similar regulation clauses
+            similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id)
             
-        best_match_doc, score = similar_docs[0]
-        reg_clause_id_val = best_match_doc.metadata['clause_id']
-        reg_clause = store.get_clause_by_doc_and_clause_id(regulation_doc_id, reg_clause_id_val)
-        
-        if not reg_clause:
-            return None
+            if not similar_docs:
+                return None
+                
+            best_match_doc, score = similar_docs[0]
+            reg_clause_id_val = best_match_doc.metadata['clause_id']
+            reg_clause = store.get_clause_by_doc_and_clause_id(regulation_doc_id, reg_clause_id_val)
             
-        # Run LLM Analysis
-        analysis = await rag_engine.analyze_compliance(c_clause.text, reg_clause.text)
-        
-        return store.add_result(
-            assessment_id=assessment.id,
-            customer_clause_id=c_clause.id,
-            regulation_clause_id=reg_clause.id,
-            status=analysis['status'],
-            risk=analysis['risk'],
-            reasoning=analysis['reasoning'],
-            evidence_text=analysis.get('evidence_text', 'N/A'),
-            confidence=analysis['confidence']
-        )
+            if not reg_clause:
+                return None
+                
+            # Run LLM Analysis
+            analysis = await rag_engine.analyze_compliance(c_clause.text, reg_clause.text)
+            
+            # Defensive logging
+            if not isinstance(analysis, dict) or 'status' not in analysis:
+                print(f"DEBUG: CRITICAL ERROR - Analysis returned invalid object: {analysis}")
+            
+            try:
+                return store.add_result(
+                    assessment_id=assessment.id,
+                    customer_clause_id=c_clause.id,
+                    regulation_clause_id=reg_clause.id,
+                    status=analysis.get('status', 'UNKNOWN'),
+                    risk=analysis.get('risk', 'HIGH'),
+                    reasoning=analysis.get('reasoning', 'Analysis failed'),
+                    evidence_text=analysis.get('evidence_text', 'N/A'),
+                    confidence=analysis.get('confidence', 0.0)
+                )
+            except Exception as e:
+                print(f"DEBUG: Error adding result to store: {e}")
+                print(f"DEBUG: Analysis was: {analysis}")
+                return None
 
-    # Process all clauses in parallel
+    # Process all clauses in parallel with concurrency limit
     results_raw = await asyncio.gather(*[process_clause(c) for c in customer_clauses])
     results = [r for r in results_raw if r is not None]
         

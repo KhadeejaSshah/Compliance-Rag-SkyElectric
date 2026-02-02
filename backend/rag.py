@@ -75,21 +75,56 @@ class RAGEngine:
         
         chain = prompt | self.llm
         print(f"DEBUG: Calling LLM for compliance analysis...")
-        res = await chain.ainvoke({"customer": customer_clause, "context": regulation_context})
-        print(f"DEBUG: LLM response received")
-        
-        import json
         try:
-            # Simple cleanup for potential markdown
-            content = res.content.strip()
-            if content.startswith("```json"):
-                content = content[7:-3]
-            return json.loads(content)
-        except:
+            res = await chain.ainvoke({"customer": customer_clause, "context": regulation_context})
+            print(f"DEBUG: LLM response received")
+        except Exception as e:
+            print(f"DEBUG: LLM Invocation Error: {e}")
             return {
                 "status": "UNKNOWN",
                 "risk": "HIGH",
-                "reasoning": "Failed to parse AI response",
+                "reasoning": f"AI analysis failed: {str(e)}",
+                "evidence_text": "N/A",
+                "confidence": 0.0
+            }
+        
+        import json
+        import re
+        
+        try:
+            # More robust JSON extraction
+            content = res.content.strip()
+            # Find the first { and last }
+            start = content.find('{')
+            end = content.rfind('}')
+            
+            if start != -1 and end != -1:
+                content = content[start:end+1]
+            
+            data = json.loads(content)
+            
+            # Normalize keys to lowercase and map variants
+            normalized = {}
+            for k, v in data.items():
+                key = str(k).lower().replace(" ", "_")
+                normalized[key] = v
+                
+            # Map specific variants to expected keys
+            final = {
+                "status": normalized.get("status", normalized.get("compliance_status", "UNKNOWN")),
+                "risk": normalized.get("risk", normalized.get("risk_level", "HIGH")),
+                "reasoning": normalized.get("reasoning", normalized.get("description", "No reasoning provided")),
+                "evidence_text": normalized.get("evidence_text", normalized.get("literal_evidence", normalized.get("evidence", "N/A"))),
+                "confidence": normalized.get("confidence", normalized.get("confidence_score", 0.0))
+            }
+            return final
+        except Exception as e:
+            print(f"DEBUG: CRITICAL - JSON Parse Error in rag.py: {e}")
+            print(f"DEBUG: RAW content was: {res.content}")
+            return {
+                "status": "UNKNOWN",
+                "risk": "HIGH",
+                "reasoning": f"Failed to interpret AI response: {str(e)}",
                 "evidence_text": "N/A",
                 "confidence": 0.0
             }
