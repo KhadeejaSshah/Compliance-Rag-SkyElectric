@@ -44,6 +44,9 @@ async def upload_file(
     version: str = Form("1.0"),
     db: Session = Depends(get_db)
 ):
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    
     content = await file.read()
     doc_id = parse_pdf(content, file.filename, file_type, version)
     return {"doc_id": doc_id, "filename": file.filename}

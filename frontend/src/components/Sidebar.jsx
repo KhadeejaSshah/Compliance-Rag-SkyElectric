@@ -8,6 +8,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, assessmentId }) => {
     const [files, setFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [activeDoc, setActiveDoc] = useState({ regulation: null, customer: null });
 
     useEffect(() => {
@@ -55,18 +56,31 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, assessme
         const file = e.target.files[0];
         if (!file) return;
 
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            alert("Only PDF files are allowed.");
+            return;
+        }
+
         setUploading(true);
+        setUploadProgress(0);
+
         const formData = new FormData();
         formData.append('file', file);
         formData.append('file_type', type);
 
         try {
-            await axios.post(`${API_BASE}/upload`, formData);
+            await axios.post(`${API_BASE}/upload`, formData, {
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    setUploadProgress(percentCompleted);
+                }
+            });
             fetchDocs();
         } catch (e) {
             alert("Upload failed. Check if backend is running.");
         } finally {
             setUploading(false);
+            setUploadProgress(0);
         }
     };
 
@@ -100,11 +114,11 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, assessme
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
                     <label className="btn-primary" style={{ fontSize: '12px', textAlign: 'center', padding: '12px' }}>
                         REGULATION PDF
-                        <input type="file" hidden onChange={(e) => handleUpload(e, 'regulation')} />
+                        <input type="file" hidden accept=".pdf" onChange={(e) => handleUpload(e, 'regulation')} />
                     </label>
                     <label className="btn-primary" style={{ fontSize: '12px', textAlign: 'center', padding: '12px', background: '#3b82f6' }}>
                         CUSTOMER PDF
-                        <input type="file" hidden onChange={(e) => handleUpload(e, 'customer')} />
+                        <input type="file" hidden accept=".pdf" onChange={(e) => handleUpload(e, 'customer')} />
                     </label>
                 </div>
             </section>
@@ -114,6 +128,33 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, assessme
                     <Database size={16} /> Knowledge Base
                 </h3>
                 <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {uploading && (
+                        <div style={{
+                            padding: '12px',
+                            borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            position: 'relative',
+                            overflow: 'hidden'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <FileText size={18} color="#a855f7" className="animate-pulse" />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>Uploading...</div>
+                                    <div style={{ fontSize: '11px', opacity: 0.5 }}>{uploadProgress}% completed</div>
+                                </div>
+                            </div>
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                height: '2px',
+                                background: 'linear-gradient(to right, #a855f7, #6366f1)',
+                                width: `${uploadProgress}%`,
+                                transition: 'width 0.2s ease-out'
+                            }}></div>
+                        </div>
+                    )}
                     {files.map(f => (
                         <div
                             key={f.id}
