@@ -5,12 +5,40 @@ import re
 from .models import store
 from .rag import rag_engine
 
-# Try to import python-docx, will be available after installing
+# Try to import python-docx
 try:
     from docx import Document as DocxDocument
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
+
+
+def parse_xlsx(file_content: bytes, filename: str) -> List[Dict]:
+    """Parse XLSX and extract clauses. Each row is treated as a context block."""
+    if not XLSX_AVAILABLE:
+        raise ImportError("openpyxl is not installed. Run: pip install openpyxl")
+    
+    wb = openpyxl.load_workbook(BytesIO(file_content), data_only=True)
+    clauses = []
+    
+    for sheet_name in wb.sheetnames:
+        sheet = wb[sheet_name]
+        for row_idx, row in enumerate(sheet.iter_rows(values_only=True)):
+            if not row:
+                continue
+            
+            # Combine row values into a single string
+            row_text = " | ".join([str(cell) for cell in row if cell is not None]).strip()
+            
+            if len(row_text) > 20:
+                clauses.append({
+                    "clause_id": f"{sheet_name}-R{row_idx+1}",
+                    "text": row_text,
+                    "page_number": 1,
+                    "severity": "MUST" if any(word in row_text.lower() for word in ["shall", "must", "required"]) else "SHOULD"
+                })
+    
+    return clauses
 
 
 def parse_pdf(file_content: bytes, filename: str) -> List[Dict]:
@@ -25,7 +53,7 @@ def parse_pdf(file_content: bytes, filename: str) -> List[Dict]:
         page_text = page.extract_text()
         if not page_text:
             continue
-            
+        
         matches = list(re.finditer(pattern, page_text))
         
         if not matches:
@@ -116,9 +144,9 @@ def parse_docx(file_content: bytes, filename: str) -> List[Dict]:
     return clauses
 
 
-def parse_document(file_content: bytes, filename: str, file_type: str, version: str = "1.0") -> int:
+def parse_document(file_content: bytes, filename: str, file_type: str, version: str = "1.0", namespace: str = "session") -> int:
     """
-    Parse a document (PDF or DOCX) and store in memory.
+    Parse a document (PDF, DOCX, or XLSX) and store in memory.
     Returns the document ID.
     """
     # Determine file type and parse
@@ -128,6 +156,8 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
         clauses = parse_pdf(file_content, filename)
     elif filename_lower.endswith('.docx'):
         clauses = parse_docx(file_content, filename)
+    elif filename_lower.endswith('.xlsx'):
+        clauses = parse_xlsx(file_content, filename)
     else:
         raise ValueError(f"Unsupported file type: {filename}")
     
@@ -145,6 +175,7 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
             severity=c['severity']
         )
         ingest_clauses.append({
+            "status": "INGESTED", # Temporary placeholder
             "clause_id": c['clause_id'],
             "doc_id": doc.id,
             "doc_name": filename,  # Include filename for chat responses
@@ -155,6 +186,6 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
     # Ingest all documents into Vector DB (not just regulations)
     # This enables chatting with any uploaded document
     if ingest_clauses:
-        rag_engine.ingest_documents(ingest_clauses)
+        rag_engine.ingest_documents(ingest_clauses, namespace=namespace)
     
     return doc.id

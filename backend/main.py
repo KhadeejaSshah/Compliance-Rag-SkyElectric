@@ -10,14 +10,20 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
-from langchain_community.vectorstores import FAISS
 import io
+from fastapi.responses import FileResponse
+import shutil
+
+# Ensure storage directory exists
+STORAGE_DIR = "backend/storage"
+os.makedirs(STORAGE_DIR, exist_ok=True)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Clear any existing data on startup (fresh session)
     store.reset()
-    rag_engine.clear_index()
+    # By default, clear only the session namespace in Pinecone
+    rag_engine.clear_index(namespace="session")
     yield
 
 app = FastAPI(title="3D Compliance Intelligence API", lifespan=lifespan)
@@ -31,13 +37,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALLOWED_EXTENSIONS = {'.pdf', '.docx'}
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.xlsx'}
 
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     file_type: str = Form(...),  # 'regulation' | 'customer'
     version: str = Form("1.0"),
+    namespace: str = Form("session"),
 ):
     # Check file extension
     filename_lower = file.filename.lower()
@@ -47,11 +54,36 @@ async def upload_file(
             detail=f"Only {', '.join(ALLOWED_EXTENSIONS)} files are supported."
         )
     
-    print(f"DEBUG: Uploading {file.filename} as {file_type}")
+    print(f"DEBUG: Uploading {file.filename} as {file_type} to namespace {namespace}")
     content = await file.read()
-    doc_id = parse_document(content, file.filename, file_type, version)
+    doc_id = parse_document(content, file.filename, file_type, version, namespace=namespace)
+    
+    # Save the file to physical storage
+    file_path = os.path.join(STORAGE_DIR, f"{doc_id}_{file.filename}")
+    with open(file_path, "wb") as f:
+        f.write(content)
+        
     print(f"DEBUG: Uploaded {file.filename}, doc_id: {doc_id}")
     return {"doc_id": doc_id, "filename": file.filename}
+
+@app.get("/documents/{doc_id}/download")
+def download_document(doc_id: int):
+    doc = store.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Find the file in storage
+    # We prefix with doc_id_ to avoid name collisions
+    file_path = None
+    for f in os.listdir(STORAGE_DIR):
+        if f.startswith(f"{doc_id}_"):
+            file_path = os.path.join(STORAGE_DIR, f)
+            break
+            
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found in storage")
+        
+    return FileResponse(file_path, filename=doc.filename)
 
 @app.get("/documents")
 def list_documents():
@@ -98,13 +130,14 @@ def update_document_type(doc_id: int, file_type: str = Form(...)):
 @app.post("/reset")
 def reset_data():
     store.reset()
-    rag_engine.clear_index()
-    return {"message": "All data cleared"}
+    rag_engine.clear_index(namespace="session")
+    return {"message": "All data cleared (session only)"}
 
 @app.post("/assess")
 async def assess_compliance(
     customer_doc_id: int,
     regulation_doc_id: int,
+    use_kb: bool = Form(False),
 ):
     print(f"DEBUG: Assessing compliance. Customer Doc: {customer_doc_id}, Reg Doc: {regulation_doc_id}")
     customer_clauses = store.get_clauses_by_document(customer_doc_id)
@@ -125,7 +158,7 @@ async def assess_compliance(
     async def process_clause(c_clause):
         async with semaphore:
             # Retrieve similar regulation clauses
-            similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id)
+            similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id, use_kb=use_kb)
             
             if not similar_docs:
                 return None
@@ -185,9 +218,10 @@ def debug_vector_store():
 @app.post("/chat")
 async def chat_with_docs(
     query: str = Form(...),
+    use_kb: bool = Form(False),
 ):
-    # Search across all documents for the most relevant context
-    similar_docs = rag_engine.retrieve_similar_clauses(query, top_k=5)
+    # Search across documents with optional knowledge base
+    similar_docs = rag_engine.retrieve_similar_clauses(query, top_k=5, use_kb=use_kb)
     
     if not similar_docs:
         return {"answer": "I couldn't find any relevant information in your documents. Please upload some documents first."}
@@ -195,8 +229,10 @@ async def chat_with_docs(
     # Build context with document NAME (not just ID), numbered for citation mapping
     context_parts = []
     for i, (d, score) in enumerate(similar_docs, 1):
-        doc_obj = store.get_document(d.metadata.get('doc_id'))
-        doc_name = doc_obj.filename if doc_obj else 'Unknown Document'
+        # Fallback to metadata if store is cleared (e.g. for permanent KB)
+        doc_id = d.metadata.get('doc_id')
+        doc_obj = store.get_document(int(doc_id)) if doc_id else None
+        doc_name = doc_obj.filename if doc_obj else d.metadata.get('doc_name', 'Unknown')
         clause_id = d.metadata.get('clause_id', 'N/A')
         page = d.metadata.get('page_number', 'N/A')
         context_parts.append(
