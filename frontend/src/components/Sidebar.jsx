@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeClick, assessmentId, mode }) => {
+const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeClick, assessmentId, mode, useKb }) => {
     const [files, setFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -151,8 +151,13 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeCl
             const firstDoc = standards[0];
             const secondDoc = projects[0];
 
-            console.log(`Analyzing: Standard=${firstDoc.filename}, Project=${secondDoc.filename}`);
-            const res = await axios.post(`${API_BASE}/assess?customer_doc_id=${secondDoc.id}&regulation_doc_id=${firstDoc.id}`);
+            console.log(`Analyzing: Standard=${firstDoc.filename}, Project=${secondDoc.filename} | KB=${useKb}`);
+            const formData = new FormData();
+            formData.append('customer_doc_id', secondDoc.id);
+            formData.append('regulation_doc_id', firstDoc.id);
+            formData.append('use_kb', useKb);
+
+            const res = await axios.post(`${API_BASE}/assess`, formData);
             onAssessmentComplete(res.data.assessment_id);
         } catch (e) {
             console.error("Assessment Error:", e);

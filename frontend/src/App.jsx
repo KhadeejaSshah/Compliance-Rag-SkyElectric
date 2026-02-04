@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import ThreeScene from './components/ThreeScene';
+import NeuralViewport from './components/ThreeScene';
 import Sidebar from './components/Sidebar';
 import ChatDialog from './components/ChatDialog';
-import { Layout, MessageSquare } from 'lucide-react';
+import { Layout, MessageSquare, Database } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -13,6 +13,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [assessmentId, setAssessmentId] = useState(null);
   const [mode, setMode] = useState('graph'); // 'graph' | 'chat'
+  const [useKb, setUseKb] = useState(false);
 
   // Ensure temporary session storage
   React.useEffect(() => {
@@ -77,9 +78,60 @@ function App() {
         selectedNode={selectedNode}
         assessmentId={assessmentId}
         mode={mode}
+        useKb={useKb}
       />
 
       <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+        {/* Knowledge Base Toggle (Top Left) */}
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '20px',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          padding: '8px 16px',
+          background: 'rgba(20, 20, 25, 0.8)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '12px',
+        }}>
+          <Database size={18} color={useKb ? "#a855f7" : "#fff"} style={{ opacity: useKb ? 1 : 0.5 }} />
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '10px', fontWeight: 800, opacity: 0.5, textTransform: 'uppercase' }}>Knowledge Base</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: useKb ? '#a855f7' : '#fff' }}>
+                {useKb ? "ENABLED" : "DISABLED"}
+              </span>
+              <button
+                onClick={() => setUseKb(!useKb)}
+                style={{
+                  width: '36px',
+                  height: '20px',
+                  borderRadius: '10px',
+                  background: useKb ? '#a855f7' : '#333',
+                  border: 'none',
+                  position: 'relative',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s'
+                }}
+              >
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  position: 'absolute',
+                  top: '3px',
+                  left: useKb ? '19px' : '3px',
+                  transition: 'all 0.3s'
+                }} />
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Top Navigation Mode Switcher */}
         <div style={{
           padding: '12px 24px',
@@ -136,7 +188,7 @@ function App() {
         <div style={{ flex: 1, position: 'relative' }}>
           {mode === 'graph' ? (
             <>
-              <ThreeScene
+              <NeuralViewport
                 graphData={graphData}
                 onNodeClick={handleNodeClick}
                 selectedNode={selectedNode}
@@ -157,11 +209,11 @@ function App() {
                 </div>
               )}
               {/* Floating Chat in Graph Mode */}
-              <ChatDialog />
+              <ChatDialog useKb={useKb} />
             </>
           ) : (
-            <div style={{ width: '100%', height: '100%', padding: '40px', display: 'flex', justifyContent: 'center' }}>
-              <ChatDialog isFullScreen={true} />
+            <div style={{ width: '100%', height: '100', padding: '40px', display: 'flex', justifyContent: 'center' }}>
+              <ChatDialog isFullScreen={true} useKb={useKb} />
             </div>
           )}
         </div>

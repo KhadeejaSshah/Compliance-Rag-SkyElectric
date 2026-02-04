@@ -5,7 +5,7 @@ import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-const ChatDialog = ({ isFullScreen = false }) => {
+const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -29,6 +29,7 @@ const ChatDialog = ({ isFullScreen = false }) => {
         try {
             const formData = new FormData();
             formData.append('query', input);
+            formData.append('use_kb', useKb);
             const res = await axios.post(`${API_BASE}/chat`, formData);
 
             setMessages(prev => [...prev, { role: 'bot', content: res.data.answer }]);
