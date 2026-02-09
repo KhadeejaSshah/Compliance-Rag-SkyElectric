@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2 } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2, Zap, Shield, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
+import logo from '../assets/cleanlogo.png';
+
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -45,16 +47,16 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
         maxWidth: '1000px',
         height: '100%',
         maxHeight: '800px',
-        background: 'rgba(20, 20, 25, 0.95)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
         borderRadius: '24px',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 40px 80px rgba(0,0,0,0.6)',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.05)',
         overflow: 'hidden',
         position: 'relative'
     } : {
+
         position: 'fixed',
         bottom: '100px',
         right: '24px',
@@ -76,13 +78,14 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
             {/* Header */}
             <div style={{
                 padding: isFullScreen ? '24px' : '16px',
-                background: 'rgba(255,255,255,0.05)',
-                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                background: '#ffffff',
+                borderBottom: '1px solid #f3f4f6',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+
                     <div style={{
                         width: '10px',
                         height: '10px',
@@ -90,15 +93,16 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                         background: '#10b981',
                         boxShadow: '0 0 10px #10b981'
                     }}></div>
-                    <span style={{ fontWeight: 'bold', fontSize: isFullScreen ? '18px' : '14px' }}>
-                        SkyCompliance AI Analyst
+                    <span style={{ fontWeight: 'bold', fontSize: isFullScreen ? '18px' : '14px', color: '#111827' }}>
+                        SkyCompliance AI
                     </span>
                 </div>
                 {!isFullScreen && (
-                    <button onClick={() => setIsOpen(false)} style={{ background: 'transparent', border: 'none', color: 'white', opacity: 0.5, cursor: 'pointer' }}>
+                    <button onClick={() => setIsOpen(false)} style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
                         <X size={20} />
                     </button>
                 )}
+
             </div>
 
             {/* Messages */}
@@ -111,15 +115,61 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                 gap: '16px'
             }}>
                 {messages.length === 0 && (
-                    <div style={{ opacity: 0.4, textAlign: 'center', marginTop: isFullScreen ? '100px' : '40px' }}>
-                        <Bot size={isFullScreen ? 64 : 40} style={{ margin: '0 auto 16px', color: '#6366f1' }} />
-                        <h3 style={{ fontSize: isFullScreen ? '24px' : '18px', marginBottom: '8px' }}>SkyCompliance™ Intelligent Chat</h3>
-                        <p style={{ fontSize: isFullScreen ? '16px' : '14px' }}>
-                            Ask questions regarding your uploaded PDFs and DOCX files.<br />
-                            I can automatically translate and summarize documents in multiple languages.
+                    <div style={{ textAlign: 'center', marginTop: isFullScreen ? '40px' : '20px', padding: '0 20px' }}>
+                        <img src={logo} alt="SkyChat Logo" style={{ width: '80px', height: '80px', marginBottom: '24px' }} />
+                        <h1 style={{ fontSize: isFullScreen ? '32px' : '24px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' }}>
+                            Welcome to SkyCompliance
+                        </h1>
+                        <p style={{ fontSize: isFullScreen ? '18px' : '16px', color: '#6b7280', marginBottom: '38px' }}>
+                            Ask questions, get help, or just chat!
                         </p>
+
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(2, 1fr)',
+                            gap: '10px',
+                            maxWidth: '700px',
+                            margin: '0 auto'
+                        }}>
+                            {[
+                                { title: 'Natural Conversations', desc: 'Chat naturally with our AI assistant', icon: <MessageSquare size={20} color="#6b7280" />, bg: '#f9fafb' },
+                                { title: 'Fast Responses', desc: 'Get quick and accurate answers', icon: <Zap size={20} color="#6b7280" />, bg: '#f9fafb' },
+                                { title: 'Secure & Private', desc: 'Your conversations are protected', icon: <Shield size={20} color="#6b7280" />, bg: '#f9fafb' },
+                                { title: 'Always Available', desc: '24/7 assistance whenever you need it', icon: <Globe size={20} color="#6b7280" />, bg: '#f9fafb' }
+                            ].map((feature, i) => (
+                                <div key={i} style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '16px',
+                                    padding: '0px',
+                                    background: feature.bg,
+                                    borderRadius: '16px',
+                                    textAlign: 'left'
+                                }}>
+                                    <div style={{
+                                        width: '40px',
+                                        marginTop: '20px',
+                                        height: '40px',
+                                        borderRadius: '10px',
+                                        background: '#ffffff',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0,
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                                    }}>
+                                        {feature.icon}
+                                    </div>
+                                    <div>
+                                        <h4 style={{ fontSize: '16px', fontWeight: 'bold', color: '#111827', marginBottom: '4px' }}>{feature.title}</h4>
+                                        <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: 1.4 }}>{feature.desc}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
+
                 {messages.map((m, idx) => (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -128,17 +178,17 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                         style={{
                             alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                             maxWidth: '85%',
-                            padding: isFullScreen ? '16px 20px' : '10px 14px',
-                            borderRadius: m.role === 'user' ? '16px 16px 0 16px' : '16px 16px 16px 0',
-                            background: m.role === 'user' ? 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)' : 'rgba(255,255,255,0.08)',
-                            color: 'white',
-                            fontSize: isFullScreen ? '16px' : '14px',
-                            lineHeight: 1.6,
-                            boxShadow: m.role === 'user' ? '0 4px 12px rgba(99, 102, 241, 0.3)' : 'none'
+                            padding: isFullScreen ? '12px 20px' : '10px 14px',
+                            borderRadius: m.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+                            background: m.role === 'user' ? '#2563eb' : '#f3f4f6',
+                            color: m.role === 'user' ? '#ffffff' : '#1f2937',
+                            fontSize: isFullScreen ? '15px' : '14px',
+                            lineHeight: 1.5,
                         }}
                     >
                         {m.content}
                     </motion.div>
+
                 ))}
                 {loading && (
                     <div style={{ alignSelf: 'flex-start', padding: '12px 18px', borderRadius: '16px 16px 16px 0', background: 'rgba(255,255,255,0.08)' }}>
@@ -148,51 +198,54 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
             </div>
 
             {/* Input */}
-            <div style={{ padding: isFullScreen ? '32px' : '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ padding: isFullScreen ? '24px' : '16px', background: '#ffffff', borderTop: '1px solid #f3f4f6' }}>
                 <div style={{
                     display: 'flex',
                     gap: '12px',
-                    background: 'rgba(255,255,255,0.05)',
+                    background: '#f9fafb',
                     padding: isFullScreen ? '12px 20px' : '10px 14px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255,255,255,0.1)'
+                    borderRadius: '16px',
+                    border: '1px solid #e5e7eb'
                 }}>
                     <input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Type your question here... (Multilingual supported)"
+                        placeholder="Ask anything..."
                         style={{
                             flex: 1,
                             background: 'transparent',
                             border: 'none',
-                            color: 'white',
+                            color: '#111827',
                             outline: 'none',
                             fontSize: isFullScreen ? '16px' : '14px'
                         }}
                     />
+
                     <button
                         onClick={handleSend}
                         disabled={loading}
                         style={{
-                            background: '#6366f1',
+                            background: '#2563eb',
                             border: 'none',
                             color: 'white',
                             cursor: 'pointer',
                             opacity: loading ? 0.5 : 1,
-                            padding: '8px',
-                            borderRadius: '8px',
+                            padding: '10px',
+                            borderRadius: '12px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            transition: 'all 0.2s'
                         }}
                     >
                         <Send size={isFullScreen ? 20 : 18} />
                     </button>
+
                 </div>
                 {isFullScreen && (
                     <p style={{ marginTop: '12px', fontSize: '12px', opacity: 0.4, textAlign: 'center' }}>
-                        I use RAG to analyze your specific documents. All answers are based on the knowledge base you've uploaded.
+                        SkyCompliance can make mistakes. Consider checking important information.
                     </p>
                 )}
             </div>
