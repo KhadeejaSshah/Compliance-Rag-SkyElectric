@@ -3,6 +3,7 @@ import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2, Zap, Shield, G
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import logo from '../assets/cleanlogo.png';
+import ReactiveBackground from './ReactiveBackground';
 
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
@@ -12,7 +13,9 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [animationState, setAnimationState] = useState('idle');
     const scrollRef = useRef();
+
 
     const formatTime = (timestamp) => {
         if (!timestamp) return '';
@@ -36,6 +39,7 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setLoading(true);
+        setAnimationState('thinking');
 
         try {
             const formData = new FormData();
@@ -43,13 +47,18 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
             formData.append('use_kb', useKb);
             const res = await axios.post(`${API_BASE}/chat`, formData);
 
+            setAnimationState('response');
             setMessages(prev => [...prev, { role: 'bot', content: res.data.answer, timestamp: new Date() }]);
+            // Reset to idle after response animation
+            setTimeout(() => setAnimationState('idle'), 2000);
         } catch (e) {
+            setAnimationState('idle');
             setMessages(prev => [...prev, { role: 'bot', content: "Failed to connect to the AI analyst. Is the backend running?", timestamp: new Date() }]);
         } finally {
             setLoading(false);
         }
     };
+
 
     const containerStyle = isFullScreen ? {
         width: '100%',
@@ -236,7 +245,14 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                 }}>
                     <input
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => {
+                            setInput(e.target.value);
+                            if (e.target.value.trim() && animationState === 'idle') {
+                                setAnimationState('typing');
+                            } else if (!e.target.value.trim() && animationState === 'typing') {
+                                setAnimationState('idle');
+                            }
+                        }}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                         placeholder="Ask anything..."
                         style={{
@@ -248,6 +264,7 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                             fontSize: isFullScreen ? '16px' : '14px'
                         }}
                     />
+
 
                     <button
                         onClick={handleSend}
@@ -323,8 +340,16 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
     );
 
     if (isFullScreen) {
-        return chatContent;
+        return (
+            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                <ReactiveBackground state={animationState} />
+                <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    {chatContent}
+                </div>
+            </div>
+        );
     }
+
 
     return (
         <>
