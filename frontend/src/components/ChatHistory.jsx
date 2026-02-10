@@ -13,7 +13,7 @@ const ChatHistory = ({ history, onLoadHistory }) => {
 
     return (
         <div style={{ padding: '20px' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6, marginBottom: '20px' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6, marginBottom: '20px' }}>
                 <Clock size={16} /> Chat History
             </h3>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>

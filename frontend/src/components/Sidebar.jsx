@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, Info, Database, Download, X } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, Info, Database, Download, X, ChevronsLeft, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeClick, assessmentId, mode, useKb, children }) => {
+const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeClick, assessmentId, mode, useKb, children, toggleSidebar }) => {
     const [files, setFiles] = useState([]);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [selectedDocs, setSelectedDocs] = useState([]);
+    const [isUploadVisible, setIsUploadVisible] = useState(false);
 
     // Color palette for file highlighting
     const colors = [
@@ -186,184 +187,226 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeCl
     const canAnalyze = hasStandard && hasProject;
 
     return (
-        <div className="glass-panel" style={{ width: '400px', height: '100vh', padding: '24px', flexShrink: 0, overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.1)', borderRadius: 0 }}>
+        <div className="glass-panel" style={{ width: '400px', height: '100vh', padding: '24px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.1)', borderRadius: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+            <button onClick={toggleSidebar} style={{
+                position: 'absolute',
+                top: '20px',
+                right: '0px', /* Changed from -20px to 0px */
+                background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
+                border: 'none',
+                color: 'white',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontWeight: 600,
+                padding: '10px',
+                zIndex: 100,
+                width: '40px',
+                height: '40px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transform: 'translateX(50%)' /* Adjust to center the button on the border */
+            }}>
+                <ChevronsLeft size={20} />
+            </button>
             <h1 style={{ fontSize: '26px', fontWeight: 800, margin: '0 0 8px 0', background: 'linear-gradient(to right, #a855f7, #6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>
                 SkyEngineering
             </h1>
             <p style={{ fontSize: '12px', opacity: 0.5, marginBottom: '24px' }}>Advanced Engineering Intelligence</p>
 
             <section style={{ marginBottom: '32px' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6 }}>
-                    <Upload size={16} /> {isGraphMode ? "Knowledge Ingestion" : "Cloud Storage"}
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px', marginTop: '12px' }}>
-                    <label className="btn-primary" style={{
-                        fontSize: '14px',
-                        textAlign: 'center',
-                        padding: '16px',
-                        background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxSizing: 'border-box',
-                        gap: '8px'
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6 }}>
+                        {/* <Upload size={16} /> {isGraphMode ? "Knowledge Ingestion" : "Cloud Storage"} */}
+                    </h3>
+                    <button onClick={() => setIsUploadVisible(!isUploadVisible)} style={{
+                        background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
+                        border: 'none',
+                        color: 'white',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        padding: '5px 10px'
                     }}>
-                        <Upload size={18} />
-                        {isGraphMode ? "UPLOAD SOURCES (Max 10)" : "UPLOAD NEW SOURCE"}
-                        <input type="file" hidden accept=".pdf,.docx" multiple={isGraphMode} onChange={(e) => handleUpload(e)} />
-                    </label>
-                    {isGraphMode && (
-                        <div style={{ fontSize: '10px', opacity: 0.6, textAlign: 'center', marginTop: '8px', padding: '10px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
-                            💡 Toggle each file type to **Standard** (AI Reference) or **Project** (Assessment Target).
-                        </div>
-                    )}
+                        <Plus size={16} />
+                    </button>
                 </div>
+                {isUploadVisible && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px', marginTop: '12px' }}>
+                        <label className="btn-primary" style={{
+                            fontSize: '14px',
+                            textAlign: 'center',
+                            padding: '16px',
+                            background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxSizing: 'border-box',
+                            gap: '8px'
+                        }}>
+                            <Upload size={18} />
+                            {isGraphMode ? "UPLOAD SOURCES (Max 10)" : "UPLOAD NEW SOURCE"}
+                            <input type="file" hidden accept=".pdf,.docx" multiple={isGraphMode} onChange={(e) => handleUpload(e)} />
+                        </label>
+                        {isGraphMode && (
+                            <div style={{ fontSize: '10px', opacity: 0.6, textAlign: 'center', marginTop: '8px', padding: '10px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '6px', border: '1px solid rgba(99, 102, 241, 0.3)' }}>
+                                💡 Toggle each file type to **Standard** (AI Reference) or **Project** (Assessment Target).
+                            </div>
+                        )}
+                    </div>
+                )}
             </section>
 
-            <section style={{ marginBottom: '32px' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6 }}>
-                    <Database size={16} /> Asset Library
-                    {isGraphMode && selectedDocs.length > 0 && (
-                        <span style={{
-                            marginLeft: 'auto',
-                            background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-                            color: 'white',
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontSize: '10px',
-                            fontWeight: 'bold'
-                        }}>
-                            {selectedDocs.length} ASSETS
-                        </span>
-                    )}
-                </h3>
-                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {uploading && (
-                        <div style={{
-                            padding: '12px',
-                            borderRadius: '8px',
-                            background: 'rgba(255,255,255,0.05)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            position: 'relative',
-                            overflow: 'hidden'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <FileText size={18} color="#a855f7" className="animate-pulse" />
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>Ingesting...</div>
-                                    <div style={{ fontSize: '11px', opacity: 0.5 }}>{uploadProgress}% completed</div>
-                                </div>
-                            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto' }}> {/* New container for scrollable sections */}
+                <section style={{ marginBottom: '32px', flexShrink: 0 }}> {/* Asset Library section */}
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6 }}>
+                        <Database size={16} /> Asset Library
+                        {isGraphMode && selectedDocs.length > 0 && (
+                            <span style={{
+                                marginLeft: 'auto',
+                                background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+                                color: 'white',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontWeight: 'bold'
+                            }}>
+                                {selectedDocs.length} ASSETS
+                            </span>
+                        )}
+                    </h3>
+                    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {uploading && (
                             <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                height: '2px',
-                                background: 'linear-gradient(to right, #a855f7, #6366f1)',
-                                width: `${uploadProgress}%`,
-                                transition: 'width 0.2s ease-out'
-                            }}></div>
-                        </div>
-                    )}
-                    {files.map((f, index) => {
-                        const color = getFileColor(index);
-                        const isSelected = selectedDocs.includes(f.id);
-                        const isReg = f.file_type === 'regulation';
-
-                        return (
-                            <div
-                                key={f.id}
-                                onClick={() => isGraphMode && toggleDocSelection(f.id)}
-                                style={{
-                                    padding: '12px',
-                                    borderRadius: '8px',
-                                    background: isGraphMode && isSelected
-                                        ? 'rgba(255,255,255,0.08)'
-                                        : 'rgba(255,255,255,0.03)',
-                                    border: `1px solid ${isGraphMode && isSelected ? 'rgba(168, 85, 247, 0.4)' : 'transparent'}`,
-                                    cursor: isGraphMode ? 'pointer' : 'default',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px',
-                                    position: 'relative',
-                                    transition: 'all 0.2s ease'
-                                }}
-                            >
+                                padding: '12px',
+                                borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.05)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                position: 'relative',
+                                overflow: 'hidden'
+                            }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div
-                                        style={{
-                                            width: '8px',
-                                            height: '8px',
-                                            borderRadius: '50%',
-                                            background: isReg ? '#a855f7' : '#10b981',
-                                            boxShadow: `0 0 8px ${isReg ? '#a855f7' : '#10b981'}40`,
-                                        }}
-                                    />
-                                    <FileText size={18} color={isSelected ? '#fff' : '#888'} />
-                                    <div style={{ overflow: 'hidden', flex: 1 }}>
-                                        <div
-                                            title={f.filename}
-                                            style={{
-                                                fontSize: '14px',
-                                                fontWeight: isSelected ? 600 : 500,
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                        >
-                                            <span style={{
-                                                background: '#a855f7',
-                                                color: '#fff',
-                                                padding: '2px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '10px',
-                                                fontWeight: 800,
-                                                marginRight: '8px',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                                            }}>
-                                                ID: {f.id}
-                                            </span>
-                                            {f.filename}
-                                        </div>
+                                    <FileText size={18} color="#a855f7" className="animate-pulse" />
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 500 }}>Ingesting...</div>
+                                        <div style={{ fontSize: '11px', opacity: 0.5 }}>{uploadProgress}% completed</div>
                                     </div>
-                                    <button
-                                        onClick={(e) => handleDelete(e, f.id)}
-                                        style={{ background: 'transparent', border: 'none', color: '#ef4444', opacity: 0.3, cursor: 'pointer', padding: '4px' }}
-                                        onMouseEnter={(e) => e.target.style.opacity = 1}
-                                        onMouseLeave={(e) => e.target.style.opacity = 0.3}
-                                    >
-                                        <XCircle size={14} />
-                                    </button>
                                 </div>
+                                <div style={{
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    height: '2px',
+                                    background: 'linear-gradient(to right, #a855f7, #6366f1)',
+                                    width: `${uploadProgress}%`,
+                                    transition: 'width 0.2s ease-out'
+                                }}></div>
+                            </div>
+                        )}
+                        {files.map((f, index) => {
+                            const color = getFileColor(index);
+                            const isSelected = selectedDocs.includes(f.id);
+                            const isReg = f.file_type === 'regulation';
 
-                                {isGraphMode && (
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', padding: '4px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                                        <span style={{ fontSize: '10px', opacity: 0.6, fontWeight: 'bold' }}>
-                                            {isReg ? "⚖️ STANDARD" : "📄 PROJECT"}
-                                        </span>
-                                        <button
-                                            onClick={(e) => handleToggleType(e, f.id, f.file_type)}
+                            return (
+                                <div
+                                    key={f.id}
+                                    onClick={() => isGraphMode && toggleDocSelection(f.id)}
+                                    style={{
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        background: isGraphMode && isSelected
+                                            ? 'rgba(255,255,255,0.08)'
+                                            : 'rgba(255,255,255,0.03)',
+                                        border: `1px solid ${isGraphMode && isSelected ? 'rgba(168, 85, 247, 0.4)' : 'transparent'}`,
+                                        cursor: isGraphMode ? 'pointer' : 'default',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '8px',
+                                        position: 'relative',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div
                                             style={{
-                                                fontSize: '9px',
-                                                background: isReg ? 'rgba(168, 85, 247, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                                                border: `1px solid ${isReg ? '#a855f7' : '#10b981'}`,
-                                                color: 'white',
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer'
+                                                width: '8px',
+                                                height: '8px',
+                                                borderRadius: '50%',
+                                                background: isReg ? '#a855f7' : '#10b981',
+                                                boxShadow: `0 0 8px ${isReg ? '#a855f7' : '#10b981'}40`,
                                             }}
+                                        />
+                                        <FileText size={18} color={isSelected ? '#fff' : '#888'} />
+                                        <div style={{ overflow: 'hidden', flex: 1 }}>
+                                            <div
+                                                title={f.filename}
+                                                style={{
+                                                    fontSize: '14px',
+                                                    fontWeight: isSelected ? 600 : 500,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap'
+                                                }}
+                                            >
+                                                <span style={{
+                                                    background: '#a855f7',
+                                                    color: '#fff',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '10px',
+                                                    fontWeight: 800,
+                                                    marginRight: '8px',
+                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                                                }}>
+                                                    ID: {f.id}
+                                                </span>
+                                                {f.filename}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={(e) => handleDelete(e, f.id)}
+                                            style={{ background: 'transparent', border: 'none', color: '#ef4444', opacity: 0.3, cursor: 'pointer', padding: '4px' }}
+                                            onMouseEnter={(e) => e.target.style.opacity = 1}
+                                            onMouseLeave={(e) => e.target.style.opacity = 0.3}
                                         >
-                                            TOGGLE ROLE
+                                            <XCircle size={14} />
                                         </button>
                                     </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
 
-                {children}
+                                    {isGraphMode && (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px', padding: '4px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                                            <span style={{ fontSize: '10px', opacity: 0.6, fontWeight: 'bold' }}>
+                                                {isReg ? "⚖️ STANDARD" : "📄 PROJECT"}
+                                            </span>
+                                            <button
+                                                onClick={(e) => handleToggleType(e, f.id, f.file_type)}
+                                                style={{
+                                                    fontSize: '9px',
+                                                    background: isReg ? 'rgba(168, 85, 247, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                                                    border: `1px solid ${isReg ? '#a855f7' : '#10b981'}`,
+                                                    color: 'white',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                TOGGLE ROLE
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
 
+                <section style={{ flex: 1, overflowY: 'auto' }}> {/* Chat History section */}
+                    {children}
+                </section>
+            </div>
+
+            <section style={{ flexShrink: 0 }}>
                 {isGraphMode && (
                     <div style={{ marginTop: '20px' }}>
                         <button

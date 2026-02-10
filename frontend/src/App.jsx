@@ -17,6 +17,11 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
   const [selectedChatIndex, setSelectedChatIndex] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
 
   useEffect(() => {
     const savedHistory = localStorage.getItem('chatHistory');
@@ -122,20 +127,39 @@ function App() {
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', background: '#f9fafb' }}>
 
-      <Sidebar
-        onAssessmentComplete={handleAssessmentComplete}
-        selectedNode={selectedNode}
-        onStartAnalysis={handleStartAnalysis}
-        onNodeClick={handleNodeClick}
-        assessmentId={assessmentId}
-        mode={mode}
-        useKb={useKb}
-      >
-        <ChatHistory history={chatHistory} onLoadHistory={handleLoadHistory} />
-      </Sidebar>
+      {isSidebarOpen && (
+        <Sidebar
+          onAssessmentComplete={handleAssessmentComplete}
+          selectedNode={selectedNode}
+          onStartAnalysis={handleStartAnalysis}
+          onNodeClick={handleNodeClick}
+          assessmentId={assessmentId}
+          mode={mode}
+          useKb={useKb}
+          toggleSidebar={toggleSidebar}
+        >
+          <ChatHistory history={chatHistory} onLoadHistory={handleLoadHistory} />
+        </Sidebar>
+      )}
       <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }}>
 
-
+        {!isSidebarOpen && (
+          <button onClick={toggleSidebar} style={{
+            position: 'absolute',
+            top: '20px',
+            left: '10px',
+            background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
+            border: 'none',
+            color: 'white',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 600,
+            padding: '10px 15px',
+            zIndex: 100
+          }}>
+            Open Sidebar
+          </button>
+        )}
         <div style={{ flex: 1, position: 'relative' }}>
           <div style={{ width: '100%', height: '100%', padding: '40px', display: 'flex', justifyContent: 'center' }}>
             <ChatDialog
