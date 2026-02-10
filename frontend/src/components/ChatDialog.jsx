@@ -112,7 +112,7 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                         boxShadow: '0 0 10px #10b981'
                     }}></div>
                     <span style={{ fontWeight: 'bold', fontSize: isFullScreen ? '18px' : '14px', color: '#111827' }}>
-                        SkyCompliance AI
+                        SkyEngineering AI
                     </span>
                 </div>
                 {!isFullScreen && (
@@ -136,7 +136,7 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                     <div style={{ textAlign: 'center', marginTop: isFullScreen ? '40px' : '20px', padding: '0 20px' }}>
                         <img src={logo} alt="SkyChat Logo" style={{ width: '100px', height: '80px', marginBottom: '0px' }} />
                         <h1 style={{ fontSize: isFullScreen ? '32px' : '24px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' }}>
-                            Welcome to SkyCompliance
+                            Welcome to SkyEngineering
                         </h1>
                         <p style={{ fontSize: isFullScreen ? '18px' : '16px', color: '#6b7280', marginBottom: '38px' }}>
                             Ask questions, get help, or just chat!
@@ -289,7 +289,7 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                 </div>
                 {isFullScreen && (
                     <p style={{ marginTop: '12px', fontSize: '12px', opacity: 0.4, textAlign: 'center' }}>
-                        SkyCompliance can make mistakes. Consider checking important information.
+                        SkyEngineering can make mistakes. Consider checking important information.
                     </p>
                 )}
             </div>

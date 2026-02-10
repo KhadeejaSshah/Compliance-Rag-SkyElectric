@@ -345,7 +345,7 @@ def generate_report(assessment_id: int, session_id: str = Depends(get_sid)):
     elements = []
     
     styles = getSampleStyleSheet()
-    elements.append(Paragraph(f"SkyCompliance™ Engineering Report", styles['Title']))
+    elements.append(Paragraph(f"SkyEngineering Report", styles['Title']))
     elements.append(Spacer(1, 12))
     
     # Header info

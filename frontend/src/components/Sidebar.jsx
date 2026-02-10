@@ -188,7 +188,7 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeCl
     return (
         <div className="glass-panel" style={{ width: '400px', height: '100vh', padding: '24px', flexShrink: 0, overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.1)', borderRadius: 0 }}>
             <h1 style={{ fontSize: '26px', fontWeight: 800, margin: '0 0 8px 0', background: 'linear-gradient(to right, #a855f7, #6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>
-                SkyCompliance
+                SkyEngineering
             </h1>
             <p style={{ fontSize: '12px', opacity: 0.5, marginBottom: '24px' }}>Advanced Engineering Intelligence</p>
 
@@ -379,7 +379,7 @@ const Sidebar = ({ onAssessmentComplete, selectedNode, onStartAnalysis, onNodeCl
                                 opacity: !canAnalyze ? 0.5 : 1
                             }}
                         >
-                            <span style={{ fontWeight: 800 }}>RUN SKYCOMPLIANCE™</span>
+                            <span style={{ fontWeight: 800 }}>RUN SKYENGINEERING™</span>
                         </button>
                         {!canAnalyze && files.length > 0 && (
                             <div style={{ fontSize: '10px', color: '#f59e0b', marginTop: '10px', textAlign: 'center', background: 'rgba(245, 158, 11, 0.05)', padding: '8px', borderRadius: '4px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
