@@ -18,7 +18,7 @@ const ChatHistory = ({ history, onLoadHistory }) => {
             </h3>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                 {history.map((chat, index) => (
-                    <li key={index} onClick={() => onLoadHistory(chat)} style={{
+                    <li key={index} onClick={() => onLoadHistory(chat, index)} style={{
                         padding: '12px',
                         borderRadius: '8px',
                         background: 'rgba(255,255,255,0.03)',

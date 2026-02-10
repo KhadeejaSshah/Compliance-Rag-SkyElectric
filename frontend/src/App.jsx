@@ -16,6 +16,7 @@ function App() {
   const [useKb, setUseKb] = useState(true); // Enabled by default as requested
   const [messages, setMessages] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
+  const [selectedChatIndex, setSelectedChatIndex] = useState(null);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem('chatHistory');
@@ -24,18 +25,47 @@ function App() {
     }
   }, []);
 
-  const handleLoadHistory = (chat) => {
+  const handleLoadHistory = (chat, index) => {
     setMessages(chat);
+    setSelectedChatIndex(index);
   };
 
   const handleSaveChat = () => {
     if (messages.length > 0) {
-      const newHistory = [...chatHistory, messages];
+      let newHistory;
+      if (selectedChatIndex !== null) {
+        newHistory = [...chatHistory];
+        newHistory[selectedChatIndex] = messages;
+      } else {
+        newHistory = [...chatHistory, messages];
+      }
       setChatHistory(newHistory);
       localStorage.setItem('chatHistory', JSON.stringify(newHistory));
       setMessages([]);
+      setSelectedChatIndex(null);
     }
   };
+
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (messages.length > 0) {
+        let newHistory;
+        if (selectedChatIndex !== null) {
+          newHistory = [...chatHistory];
+          newHistory[selectedChatIndex] = messages;
+        } else {
+          newHistory = [...chatHistory, messages];
+        }
+        localStorage.setItem('chatHistory', JSON.stringify(newHistory));
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [messages, chatHistory, selectedChatIndex]);
 
 
   // Multi-session management
