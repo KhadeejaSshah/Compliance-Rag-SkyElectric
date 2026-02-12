@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2, Zap, Shield, Globe } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2, Zap, Shield, Globe, Upload, File, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import logo from '../assets/cleanlogo.png';
@@ -14,7 +14,10 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [animationState, setAnimationState] = useState('idle');
+    const [uploadedFile, setUploadedFile] = useState(null);
+    const [uploadLoading, setUploadLoading] = useState(false);
     const scrollRef = useRef();
+    const fileInputRef = useRef();
 
 
     const formatTime = (timestamp) => {
@@ -32,6 +35,61 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
         }
     }, [messages]);
 
+    const handleFileUpload = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Check file type
+        const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Please upload only PDF or DOCX files.');
+            return;
+        }
+
+        setUploadLoading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('file_type', 'session');
+            formData.append('version', '1.0');
+
+            await axios.post(`${API_BASE}/upload-session`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            setUploadedFile({
+                name: file.name,
+                size: file.size,
+                type: file.type
+            });
+
+            setMessages(prev => [...prev, {
+                role: 'system',
+                content: `📄 Document "${file.name}" uploaded successfully! Now I will ALWAYS use both your document AND the knowledge base together to provide comprehensive, cross-referenced answers. Ask me anything!`,
+                timestamp: new Date()
+            }]);
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            setMessages(prev => [...prev, {
+                role: 'system',
+                content: `❌ Failed to upload "${file.name}". Please try again.`,
+                timestamp: new Date()
+            }]);
+        } finally {
+            setUploadLoading(false);
+        }
+    };
+
+    const handleRemoveFile = () => {
+        setUploadedFile(null);
+        setMessages(prev => [...prev, {
+            role: 'system',
+            content: `📄 Document removed from session. Questions will now only use the knowledge base.`,
+            timestamp: new Date()
+        }]);
+    };
+
     const handleSend = async () => {
         if (!input.trim() || loading) return;
 
@@ -44,7 +102,9 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
         try {
             const formData = new FormData();
             formData.append('query', input);
-            formData.append('use_kb', useKb);
+            // Always use KB when file is uploaded for comprehensive answers
+            formData.append('use_kb', uploadedFile ? 'true' : (useKb ? 'true' : 'false'));
+            formData.append('has_session_file', uploadedFile ? 'true' : 'false');
             const res = await axios.post(`${API_BASE}/chat`, formData);
 
             setAnimationState('response');
@@ -195,24 +255,26 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
                         animate={{ opacity: 1, y: 0 }}
                         key={idx}
                         style={{
-                            alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                            maxWidth: '85%',
+                            alignSelf: m.role === 'user' ? 'flex-end' : m.role === 'system' ? 'center' : 'flex-start',
+                            maxWidth: m.role === 'system' ? '100%' : '85%',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '4px'
                         }}
                     >
                         <div style={{
-                            padding: isFullScreen ? '12px 20px' : '10px 14px',
-                            borderRadius: m.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                            background: m.role === 'user' ? '#2563eb' : '#f3f4f6',
-                            color: m.role === 'user' ? '#ffffff' : '#1f2937',
-                            fontSize: isFullScreen ? '15px' : '14px',
+                            padding: m.role === 'system' ? '8px 16px' : (isFullScreen ? '12px 20px' : '10px 14px'),
+                            borderRadius: m.role === 'system' ? '8px' : (m.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px'),
+                            background: m.role === 'user' ? '#2563eb' : m.role === 'system' ? '#f0f9ff' : '#f3f4f6',
+                            color: m.role === 'user' ? '#ffffff' : m.role === 'system' ? '#0c4a6e' : '#1f2937',
+                            fontSize: m.role === 'system' ? '13px' : (isFullScreen ? '15px' : '14px'),
                             lineHeight: 1.5,
+                            textAlign: m.role === 'system' ? 'center' : 'left',
+                            border: m.role === 'system' ? '1px solid #bae6fd' : 'none'
                         }}>
                             {m.content}
                         </div>
-                        {m.timestamp && (
+                        {m.timestamp && m.role !== 'system' && (
                             <div style={{
                                 fontSize: '11px',
                                 color: '#9ca3af',
@@ -235,6 +297,83 @@ const ChatDialog = ({ isFullScreen = false, useKb = false }) => {
 
             {/* Input */}
             <div style={{ padding: isFullScreen ? '24px' : '16px', background: '#ffffff', borderTop: '1px solid #f3f4f6' }}>
+                {/* File Upload Section */}
+                {isFullScreen && (
+                    <div style={{ marginBottom: '16px' }}>
+                        {!uploadedFile ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".pdf,.docx"
+                                    onChange={handleFileUpload}
+                                    style={{ display: 'none' }}
+                                />
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={uploadLoading}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        padding: '8px 16px',
+                                        background: uploadLoading ? '#e5e7eb' : '#f3f4f6',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '8px',
+                                        cursor: uploadLoading ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        color: '#374151',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <Upload size={16} />
+                                    {uploadLoading ? 'Uploading...' : 'Upload PDF/DOCX'}
+                                </button>
+                                <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                                    Upload your document - it will be cross-referenced with our knowledge base for verification
+                                </span>
+                            </div>
+                        ) : (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '12px 16px',
+                                background: '#f0f9ff',
+                                border: '1px solid #bae6fd',
+                                borderRadius: '8px',
+                                marginBottom: '12px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <File size={16} style={{ color: '#0284c7' }} />
+                                    <div>
+                                        <div style={{ fontSize: '14px', fontWeight: '500', color: '#0c4a6e' }}>
+                                            {uploadedFile.name}
+                                        </div>
+                                        <div style={{ fontSize: '12px', color: '#0284c7' }}>
+                                            {(uploadedFile.size / 1024).toFixed(1)} KB • Ready for questions
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleRemoveFile}
+                                    style={{
+                                        padding: '4px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#ef4444',
+                                        cursor: 'pointer',
+                                        borderRadius: '4px'
+                                    }}
+                                    title="Remove file"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+                
                 <div style={{
                     display: 'flex',
                     gap: '12px',

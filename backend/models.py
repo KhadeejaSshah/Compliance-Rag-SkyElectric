@@ -193,7 +193,7 @@ class InMemoryStore:
         result_ids = [r.id for r in s.assessment_results.values() if r.assessment_id == assessment_id]
         for rid in result_ids:
             del s.assessment_results[rid]
-    
+
     def delete_assessment(self, session_id: str, assessment_id: int):
         self.delete_results_by_assessment(session_id, assessment_id)
         s = self.get_session(session_id)

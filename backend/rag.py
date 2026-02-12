@@ -215,29 +215,42 @@ class RAGEngine:
                 "confidence": 0.0
             }
 
-    def answer_general_question(self, query: str, context: str):
+    def answer_general_question(self, query: str, context: str, context_description: str = "the provided documents"):
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a helpful compliance assistant with multilingual capabilities. 
-            Answer the user's question accurately based ON THE PROVIDED document context.
+            ("system", f"""You are a helpful compliance assistant with expert knowledge across multiple documents. 
+            Answer the user's question accurately based on the provided context from {context_description}.
+            
+            IMPORTANT CONTEXT UNDERSTANDING:
+            - 📄 "Your Document" refers to files the user uploaded in this session
+            - 📚 "Knowledge Base" refers to the permanent compliance document library
+            - When you have information from BOTH sources, you should:
+              1. Cross-reference and validate information between them
+              2. Highlight agreements, differences, or complementary details
+              3. Provide verification by citing relevant knowledge base standards/regulations
+              4. Give comprehensive answers that leverage both perspectives
+            
+            CROSS-REFERENCING APPROACH:
+            - If the user asks "Can you verify this?" - compare their document against knowledge base standards
+            - If the user asks about compliance - check their document against regulatory requirements from the knowledge base
+            - Always mention when information is confirmed, contradicted, or supplemented by the other source
             
             CITATION STYLE (IMPORTANT):
             1. Use numerical citations in your text, e.g., "The network must support 10kV [1]."
             2. At the very end of your response, list your sources in a "SOURCES" section.
             3. Each source should look like: "[1] File: filename.pdf | Clause: A.1 | Page: 5"
-            4. This keeps the main response clean while providing full traceability at the bottom.
+            4. Group sources by type: "Your Document Sources:" and "Knowledge Base Sources:"
             
             MULTILINGUAL RULES:
-            1. If the document context is in a language other than the user's query, translate the relevant information automatically.
-            2. Even if the context is technical (numbers, section titles), explain what those sections represent.
-            3. NEVER say "no information available in English" if there is information in ANY language. Translate it!
+            1. If documents are in different languages, translate and cross-reference appropriately
+            2. Always provide comprehensive answers regardless of source language
             
-            Context:
-            {context}"""),
+            Context from {context_description}:
+            {{context}}"""),
             ("user", "{query}")
         ])
         
         chain = prompt | self.llm
-        res = chain.invoke({"query": query, "context": context})
+        res = chain.invoke({"query": query, "context": context, "context_description": context_description})
         return res.content
 
 

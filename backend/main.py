@@ -100,6 +100,49 @@ async def upload_file(
     print(f"DEBUG: Uploaded {file.filename}, doc_id: {doc_id} in session {session_id}")
     return {"doc_id": doc_id, "filename": file.filename}
 
+@app.post("/upload-session")
+async def upload_session_file(
+    file: UploadFile = File(...),
+    file_type: str = Form("session"),  # Default to 'session' type
+    version: str = Form("1.0"),
+    session_id: str = Depends(get_sid)
+):
+    """
+    Upload a file for session-only use. This file will be processed and indexed
+    but won't be permanently saved in the knowledge base. It's only available
+    for the current session and will be cleared after 15 minutes of inactivity.
+    """
+    # Check file extension
+    filename_lower = file.filename.lower()
+    if not any(filename_lower.endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Only {', '.join(ALLOWED_EXTENSIONS)} files are supported."
+        )
+    
+    print(f"DEBUG: Uploading session file {file.filename} to session {session_id}")
+    content = await file.read()
+    
+    # Parse document with session-specific namespace
+    doc_id = parse_document(
+        content, 
+        file.filename, 
+        file_type, 
+        version, 
+        namespace=f"session_{session_id}", 
+        session_id=session_id
+    )
+    
+    # Note: We don't save session files to permanent storage
+    # They exist only in memory/vector store for the session duration
+    
+    print(f"DEBUG: Session file {file.filename} processed, doc_id: {doc_id}")
+    return {
+        "doc_id": doc_id, 
+        "filename": file.filename,
+        "message": "File uploaded for this session only. It will be automatically removed after 15 minutes of inactivity."
+    }
+
 @app.get("/documents/{doc_id}/download")
 def download_document(doc_id: int, session_id: str = Depends(get_sid)):
     doc = store.get_document(session_id, doc_id)
@@ -258,33 +301,121 @@ def debug_vector_store(session_id: str = Depends(get_sid)):
 async def chat_with_docs(
     query: str = Form(...),
     use_kb: bool = Form(False),
+    has_session_file: str = Form("false"),
     session_id: str = Depends(get_sid)
 ):
-    # Search across documents with optional knowledge base
-    similar_docs = rag_engine.retrieve_similar_clauses(query, top_k=5, use_kb=use_kb, session_id=session_id)
+    """
+    Chat with documents combining BOTH session-uploaded files AND knowledge base.
+    When a file is uploaded, ALWAYS search both sources to provide comprehensive answers.
+    """
+    print(f"DEBUG: Chat query='{query}', use_kb={use_kb}, has_session_file={has_session_file}, session={session_id}")
     
-    if not similar_docs:
-        return {"answer": "I couldn't find any relevant information in your documents. Please upload some documents first."}
+    search_session = has_session_file.lower() == "true"
     
-    # Build context with document NAME (not just ID), numbered for citation mapping
+    # If user has uploaded a file, ALWAYS use both sources for comprehensive answers
+    if search_session:
+        # Force KB usage when session file is present
+        use_knowledge_base = True
+        print("DEBUG: Session file detected - forcing knowledge base usage for comprehensive answers")
+    else:
+        # No session file, use KB only if explicitly requested
+        use_knowledge_base = use_kb
+    
+    # Collect results from both sources
+    all_results = []
+    
+    # 1. Search session documents if available
+    if search_session:
+        try:
+            session_results = rag_engine.retrieve_similar_clauses(
+                query, 
+                top_k=4, 
+                use_kb=False, 
+                session_id=session_id
+            )
+            for doc, score in session_results:
+                all_results.append((doc, score, "session"))
+            print(f"DEBUG: Found {len(session_results)} results from session documents")
+        except Exception as e:
+            print(f"DEBUG: Error searching session documents: {e}")
+    
+    # 2. Search knowledge base if enabled
+    if use_knowledge_base:
+        try:
+            kb_results = rag_engine.retrieve_similar_clauses(
+                query, 
+                top_k=4, 
+                use_kb=True, 
+                session_id=None  # Don't include session docs in KB search
+            )
+            for doc, score in kb_results:
+                all_results.append((doc, score, "kb"))
+            print(f"DEBUG: Found {len(kb_results)} results from knowledge base")
+        except Exception as e:
+            print(f"DEBUG: Error searching knowledge base: {e}")
+    
+    if not all_results:
+        if search_session:
+            return {"answer": "I couldn't find any relevant information in your uploaded document or the knowledge base. Please check if your document contains relevant content or try rephrasing your question."}
+        elif use_knowledge_base:
+            return {"answer": "I couldn't find any relevant information in the knowledge base. Please try a different question or upload a document."}
+        else:
+            return {"answer": "Please upload a document or enable knowledge base search to get answers."}
+    
+    # Sort all results by relevance score (higher is better) and take top 6
+    all_results.sort(key=lambda x: x[1], reverse=True)
+    top_results = all_results[:6]
+    
+    # Build comprehensive context
     context_parts = []
-    for i, (d, score) in enumerate(similar_docs, 1):
-        # Fallback to metadata if store is cleared (e.g. for permanent KB)
-        doc_id = d.metadata.get('doc_id')
-        doc_obj = store.get_document(session_id, int(doc_id)) if doc_id else None
-        doc_name = doc_obj.filename if doc_obj else d.metadata.get('doc_name', 'Unknown')
-        clause_id = d.metadata.get('clause_id', 'N/A')
-        page = d.metadata.get('page_number', 'N/A')
+    session_refs = 0
+    kb_refs = 0
+    
+    for i, (doc, score, source_type) in enumerate(top_results, 1):
+        # Get document metadata
+        doc_id = doc.metadata.get('doc_id')
+        clause_id = doc.metadata.get('clause_id', 'N/A')
+        page = doc.metadata.get('page_number', 'N/A')
+        
+        if source_type == "session":
+            # Session document
+            doc_obj = store.get_document(session_id, int(doc_id)) if doc_id else None
+            doc_name = doc_obj.filename if doc_obj else 'Your Document'
+            source_label = "📄 Your Document"
+            session_refs += 1
+        else:
+            # Knowledge base document
+            doc_name = doc.metadata.get('doc_name', 'Knowledge Base Document')
+            source_label = "📚 Knowledge Base"
+            kb_refs += 1
+        
         context_parts.append(
-            f"REF [{i}]:\n"
-            f"File: {doc_name} | Clause: {clause_id} | Page: {page}\n"
-            f"Content: {d.page_content}"
+            f"REF [{i}] ({source_label}):\n"
+            f"File: {doc_name} | Clause: {clause_id} | Page: {page} | Relevance: {score:.3f}\n"
+            f"Content: {doc.page_content.strip()}"
         )
     
-    context = "\n\n---\n\n".join(context_parts)
+    context = "\n\n" + "="*50 + "\n\n".join(context_parts)
     
-    # Use LLM to answer the question based on context
-    answer = rag_engine.answer_general_question(query, context)
+    # Create descriptive context information
+    if session_refs > 0 and kb_refs > 0:
+        context_description = f"your uploaded document ({session_refs} references) and the knowledge base ({kb_refs} references)"
+        answer_instruction = "Please provide a comprehensive answer that combines insights from both your uploaded document and the knowledge base. If there are any discrepancies or complementary information, highlight them."
+    elif session_refs > 0:
+        context_description = f"your uploaded document ({session_refs} references)"
+        answer_instruction = "Please provide an answer based on your uploaded document."
+    else:
+        context_description = f"the knowledge base ({kb_refs} references)"
+        answer_instruction = "Please provide an answer based on the knowledge base."
+    
+    print(f"DEBUG: Final context uses {context_description}")
+    
+    # Enhanced context for LLM
+    enhanced_context = f"{answer_instruction}\n\n{context}"
+    
+    # Generate answer using both sources
+    answer = rag_engine.answer_general_question(query, enhanced_context, context_description)
+    
     return {"answer": answer}
 
 @app.get("/graph/{assessment_id}")
