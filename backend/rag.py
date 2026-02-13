@@ -252,10 +252,8 @@ class RAGEngine:
             - Always mention when information is confirmed, contradicted, or supplemented by the other source
             
             CITATION STYLE (IMPORTANT):
-            1. Use numerical citations in your text, e.g., "The network must support 10kV [1]."
-            2. At the very end of your response, list your sources in a "SOURCES" section.
-            3. Each source should look like: "[1] File: filename.pdf | Clause: A.1 | Page: 5"
-            4. Group sources by type: "Your Document Sources:" and "Knowledge Base Sources:"
+            - Use numerical citations in your text whenever you reference a source, e.g., "The network must support 10kV [1]."
+            - DO NOT include a "SOURCES" section at the end of your answer. The sources will be listed separately by the system.
             
             MULTILINGUAL RULES:
             1. If documents are in different languages, translate and cross-reference appropriately
