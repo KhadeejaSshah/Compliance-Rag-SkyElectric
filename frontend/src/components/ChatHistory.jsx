@@ -12,16 +12,16 @@ const ChatHistory = ({ history, activeChatId, onSelectChat, onDeleteChat, onNewC
     return (
         <section style={{ marginBottom: '32px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', opacity: 0.6 }}>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', textTransform: 'uppercase', color: '#374151' }}>
                     <MessageSquare size={16} /> Chat History
                 </h3>
                 <button
                     onClick={onNewChat}
                     style={{
                         padding: '4px 10px',
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        color: 'white',
+                        background: '#f3f4f6',
+                        border: '1px solid #e5e7eb',
+                        color: '#374151',
                         borderRadius: '6px',
                         cursor: 'pointer',
                         fontSize: '12px'
@@ -43,8 +43,8 @@ const ChatHistory = ({ history, activeChatId, onSelectChat, onDeleteChat, onNewC
                             style={{
                                 padding: '12px',
                                 borderRadius: '8px',
-                                background: isActive ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                                border: `1px solid ${isActive ? 'rgba(99, 102, 241, 0.5)' : 'transparent'}`,
+                                background: isActive ? '#ede9fe' : '#f9fafb',
+                                border: `1px solid ${isActive ? '#c4b5fd' : '#f3f4f6'}`,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -59,7 +59,7 @@ const ChatHistory = ({ history, activeChatId, onSelectChat, onDeleteChat, onNewC
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
-                                color: isActive ? '#fff' : '#ccc'
+                                color: isActive ? '#4c1d95' : '#374151'
                             }}>
                                 {title}
                             </p>

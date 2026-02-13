@@ -6,13 +6,13 @@ import ChatHistory from './ChatHistory';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-const Sidebar = ({ 
-    onAssessmentComplete, 
-    selectedNode, 
-    onStartAnalysis, 
-    onNodeClick, 
-    assessmentId, 
-    mode, 
+const Sidebar = ({
+    onAssessmentComplete,
+    selectedNode,
+    onStartAnalysis,
+    onNodeClick,
+    assessmentId,
+    mode,
     useKb,
     // Chat history props
     chatHistory,
@@ -201,13 +201,13 @@ const Sidebar = ({
     const canAnalyze = hasStandard && hasProject;
 
     return (
-        <div className="glass-panel" style={{ width: '400px', height: '100vh', padding: '24px', flexShrink: 0, overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.1)', borderRadius: 0 }}>
+        <div style={{ width: '400px', height: '100vh', padding: '24px', flexShrink: 0, overflowY: 'auto', borderRight: '1px solid #e5e7eb', borderRadius: 0, background: '#ffffff' }}>
             <h1 style={{ fontSize: '26px', fontWeight: 800, margin: '0 0 8px 0', background: 'linear-gradient(to right, #a855f7, #6366f1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>
                 SkyEngineering
             </h1>
-            <p style={{ fontSize: '12px', opacity: 0.5, marginBottom: '24px' }}>Advanced Engineering Intelligence</p>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '24px' }}>Advanced Engineering Intelligence</p>
 
-            <ChatHistory 
+            <ChatHistory
                 history={chatHistory}
                 activeChatId={activeChatId}
                 onSelectChat={onSelectChat}

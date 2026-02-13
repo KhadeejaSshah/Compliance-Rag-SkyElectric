@@ -231,7 +231,7 @@ class RAGEngine:
         prompt = ChatPromptTemplate.from_messages([
             ("system", f"""You are a helpful compliance assistant with expert knowledge across multiple documents. 
             Answer the user's question accurately based on the provided context from {context_description}.
-            
+            If the user greets you or asks a casual question (e.g., 'hi', 'how are you'), respond naturally but STRICTLY DO NOT show sources or cite any documents for that specific greeting.
             IMPORTANT CONTEXT UNDERSTANDING:
             - 📄 "Your Document" refers to files the user uploaded in this session
             - 📚 "Knowledge Base" refers to the permanent compliance document library
@@ -274,7 +274,6 @@ class RAGEngine:
             "answer": res.content.strip(),
             "sources": []  # This will be overridden in main.py
         }
-        print("DEBUG: RAG response:", res.content)
 
 # Global RAG instance
 rag_engine = RAGEngine()

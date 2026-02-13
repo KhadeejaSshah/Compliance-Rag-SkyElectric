@@ -1,12 +1,13 @@
+import re
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from contextlib import asynccontextmanager
 from .models import store, Document, Clause, Assessment, AssessmentResult
 from .ingestion import parse_document
 from .rag import rag_engine
-from fastapi.responses import StreamingResponse
+from langchain_core.prompts import ChatPromptTemplate
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -16,8 +17,24 @@ import os
 import asyncio
 import json
 from datetime import datetime, timedelta
-from fastapi.responses import FileResponse
 import shutil
+
+# ── Conversational intent pattern (compiled once at module load) ────────────
+_GREETING_PATTERN = re.compile(
+    r".*\b(hi|hello|hey|good\s?(morning|afternoon|evening|night)|"
+    r"thanks|thank\s?you|ok|okay|bye|goodbye|see\s?you|"
+    r"how\s+are\s+you|what'?s\s+up|sup|yo|hola|salam|assalam[ou]?\s?alaikum|"
+    r"welcome|nice|great|cool|sure|yes|no|nope|yep|yeah)\b.*",
+    re.IGNORECASE,
+)
+
+_GREETING_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "You are a friendly compliance assistant. Respond naturally and "
+               "concisely to the user's greeting or casual message. "
+               "Strictly DO NOT cite any sources, documents, or knowledge base. "
+               "Your response should be purely conversational."),
+    ("user", "{query}")
+])
 
 # Ensure storage directory exists
 STORAGE_DIR = "backend/storage"
@@ -319,7 +336,19 @@ async def chat_with_docs(
     except json.JSONDecodeError:
         print("DEBUG: Failed to parse history, using empty list")
         conversation_history = []
-    
+
+    # ── Conversational intent gate ──────────────────────────────────
+    if _GREETING_PATTERN.match(query.strip()):
+        print("DEBUG: Detected conversational/greeting query – skipping retrieval")
+        try:
+            chain = _GREETING_PROMPT | rag_engine.llm
+            greeting_response = chain.invoke({"query": query})
+            return {"answer": greeting_response.content.strip(), "sources": []}
+        except Exception as e:
+            print(f"DEBUG: Greeting LLM call failed: {e}")
+            return {"answer": "Hello! How can I help you today?", "sources": []}
+    # ────────────────────────────────────────────────────────────────
+
     search_session = has_session_file.lower() == "true"
     
     # If user has uploaded a file, ALWAYS use both sources for comprehensive answers

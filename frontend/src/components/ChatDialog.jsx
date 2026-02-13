@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2, Zap, Shield, Globe, Upload, File, Trash2, PlusSquare } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, User, Maximize2, Minimize2, Zap, Shield, Globe, Upload, File, FileText, Trash2, PlusSquare, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import logo from '../assets/cleanlogo.png';
@@ -8,10 +8,10 @@ import ReactiveBackground from './ReactiveBackground';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
-const ChatDialog = ({ 
-    isFullScreen = false, 
-    useKb = false, 
-    messages = [], 
+const ChatDialog = ({
+    isFullScreen = false,
+    useKb = false,
+    messages = [],
     onSendMessage,
     onNewChat
 }) => {
@@ -66,21 +66,17 @@ const ChatDialog = ({
                             fontSize: '0.82em'
                         }}
                     >
-                        <strong>[{src.id}]</strong> {src.title}  
-                        {src.clause && <> | Clause: {src.clause}</>}  
+                        <strong>[{src.id}]</strong> {src.title}
+                        {src.clause && <> | Clause: {src.clause}</>}
                         {src.page && <> | Page: {src.page}</>}
                     </div>
                 ))}
             </div>
         );
     };
-////////////
+    ////////////
     const renderMessage = (content, role, sources = []) => {
         if (!content) return null;
-
-        const parts = content.split(/SOURCES:/i);
-        const mainText = parts[0];
-        const sourcesText = parts[1];
 
         const applyInlineFormatting = (text) => {
             const regex = /(\*\*(.*?)\*\*|`(.*?)`|\[(KB|DOC)\s+\d+\])/g;
@@ -220,31 +216,12 @@ const ChatDialog = ({
 
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {formatText(mainText)}
+                {formatText(content)}
                 {renderSources(sources)}
-
-                {sourcesText && (
-                    <div
-                        style={{
-                            marginTop: '8px',
-                            paddingTop: '8px',
-                            borderTop: '1px solid #e5e7eb'
-                        }}
-                    >
-                        <div style={{ fontWeight: 600, fontSize: '0.8em', marginBottom: '6px' }}>
-                            Sources
-                        </div>
-                        {sourcesText.split('\n').map((s, idx) => (
-                            <div key={idx} style={{ fontSize: '0.8em', color: '#6b7280' }}>
-                                {s}
-                            </div>
-                        ))}
-                    </div>
-                )}
             </div>
         );
     };
-///////////////
+    ///////////////
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -320,7 +297,7 @@ const ChatDialog = ({
 
         const userInput = input;
         const userMsg = { role: 'user', content: userInput, timestamp: new Date() };
-        
+
         setInput('');
         setLoading(true);
         setAnimationState('thinking');
@@ -329,7 +306,7 @@ const ChatDialog = ({
         // If it's a new chat, a new ID is created and returned by onSendMessage.
         // If it's an existing chat, the existing active ID is used and returned.
         const chatId = onSendMessage(userMsg);
-        
+
         // We construct the history for the backend *before* the API call.
         // This includes the message history from props, plus the new user message.
         const historyForBackend = [...messages, userMsg];
@@ -339,7 +316,7 @@ const ChatDialog = ({
             formData.append('query', userInput);
             formData.append('use_kb', uploadedFile ? 'true' : (useKb ? 'true' : 'false'));
             formData.append('has_session_file', uploadedFile ? 'true' : 'false');
-            
+
             // Pass the history, including the latest user message.
             formData.append('history', JSON.stringify(historyForBackend));
 
@@ -355,7 +332,7 @@ const ChatDialog = ({
         } catch (e) {
             setAnimationState('idle');
             const errorMsg = { role: 'bot', content: "Failed to connect to the AI analyst. Is the backend running?", timestamp: new Date() };
-            
+
             // Use the stable chatId for the error message too.
             onSendMessage(errorMsg, chatId);
         } finally {
@@ -419,9 +396,9 @@ const ChatDialog = ({
                         SkyEngineering AI
                     </span>
                 </div>
-                <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     {isFullScreen && (
-                         <button onClick={onNewChat} title="Start New Chat" style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
+                        <button onClick={onNewChat} title="Start New Chat" style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
                             <PlusSquare size={20} />
                         </button>
                     )}
@@ -438,7 +415,7 @@ const ChatDialog = ({
             <div ref={scrollRef} style={{
                 flex: 1,
                 padding: isFullScreen ? '32px' : '16px',
-                overflowY: 'auto',
+                overflowY: messages.length === 0 ? 'hidden' : 'auto',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '16px'
@@ -455,44 +432,46 @@ const ChatDialog = ({
 
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(2, 1fr)',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                             gap: '10px',
                             maxWidth: '700px',
                             margin: '0 auto'
                         }}>
                             {[
-                                { title: 'Natural Conversations', desc: 'Chat naturally with our AI assistant', icon: <MessageSquare size={20} color="#6b7280" />, bg: '#f9fafb' },
-                                { title: 'Fast Responses', desc: 'Get quick and accurate answers', icon: <Zap size={20} color="#6b7280" />, bg: '#f9fafb' },
-                                { title: 'Secure & Private', desc: 'Your conversations are protected', icon: <Shield size={20} color="#6b7280" />, bg: '#f9fafb' },
-                                { title: 'Always Available', desc: '24/7 assistance whenever you need it', icon: <Globe size={20} color="#6b7280" />, bg: '#f9fafb' }
+                                { title: 'Knowledge Base', desc: 'Answers grounded in verified compliance data', icon: <Shield size={20} color="#6366f1" />, bg: '#f5f3ff' },
+                                { title: 'Document Analysis', desc: 'Upload files and get instant insights', icon: <FileText size={20} color="#14b8a6" />, bg: '#f0fdfa' },
+                                { title: 'Session Memory', desc: 'I remember our entire conversation', icon: <MessageSquare size={20} color="#f59e0b" />, bg: '#fffbeb' },
+                                { title: 'Source Citations', desc: 'Every answer traceable to its source', icon: <Globe size={20} color="#3b82f6" />, bg: '#eff6ff' }
                             ].map((feature, i) => (
                                 <div key={i} style={{
                                     display: 'flex',
-                                    alignItems: 'flex-start',
+                                    alignItems: 'center',
                                     gap: '16px',
-                                    padding: '0px',
+                                    padding: '20px',
                                     background: feature.bg,
-                                    borderRadius: '16px',
-                                    textAlign: 'left'
+                                    border: '1px solid #f3f4f6',
+                                    borderRadius: '20px',
+                                    textAlign: 'left',
+                                    transition: 'transform 0.2s',
+                                    cursor: 'default'
                                 }}>
                                     <div style={{
-                                        width: '40px',
-                                        marginTop: '20px',
-                                        marginLeft: '10px',
-                                        height: '40px',
-                                        borderRadius: '10px',
+                                        width: '48px',
+                                        height: '48px',
+                                        borderRadius: '12px',
                                         background: '#ffffff',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         flexShrink: 0,
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                                        border: '1px solid #f3f4f6'
                                     }}>
                                         {feature.icon}
                                     </div>
                                     <div>
-                                        <h4 style={{ fontSize: '16px', fontWeight: 'bold', color: '#111827', marginBottom: '4px' }}>{feature.title}</h4>
-                                        <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: 1.4 }}>{feature.desc}</p>
+                                        <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#111827', marginBottom: '4px' }}>{feature.title}</h4>
+                                        <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.4 }}>{feature.desc}</p>
                                     </div>
                                 </div>
                             ))}
@@ -525,8 +504,8 @@ const ChatDialog = ({
                         }}>
                             {/* {m.content} */}
                             {m.role === 'bot'
-    ? renderMessage(m.content, m.role , m.sources)
-    : m.content}
+                                ? renderMessage(m.content, m.role, m.sources)
+                                : m.content}
                         </div>
                         {m.timestamp && m.role !== 'system' && (
                             <div style={{
@@ -550,93 +529,89 @@ const ChatDialog = ({
             </div>
 
             {/* Input */}
-            <div style={{ padding: isFullScreen ? '24px' : '16px', background: '#ffffff', borderTop: '1px solid #f3f4f6' }}>
-                {/* File Upload Section */}
-                {isFullScreen && (
-                    <div style={{ marginBottom: '16px' }}>
-                        {!uploadedFile ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept=".pdf,.docx"
-                                    onChange={handleFileUpload}
-                                    style={{ display: 'none' }}
-                                />
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={uploadLoading}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        padding: '8px 16px',
-                                        background: uploadLoading ? '#e5e7eb' : '#f3f4f6',
-                                        border: '1px solid #d1d5db',
-                                        borderRadius: '8px',
-                                        cursor: uploadLoading ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
-                                        color: '#374151',
-                                        transition: 'all 0.2s'
-                                    }}
-                                    title="Upload PDF/DOCX"
-                                >
-                                    <Upload size={16} />
-                                    {uploadLoading ? 'Uploading...' : 'Upload PDF/DOCX'}
-                                </button>
-                                <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                                    Upload your document - it will be cross-referenced with our knowledge base for verification
-                                </span>
-                            </div>
-                        ) : (
-                            <div style={{
+            <div style={{ padding: isFullScreen ? '16px 24px' : '16px', background: '#ffffff', borderTop: '1px solid #f3f4f6' }}>
+                {/* Hidden file input */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx"
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                />
+
+                {/* Attached file chip */}
+                {isFullScreen && uploadedFile && (
+                    <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '6px 12px',
+                        background: '#f0f9ff',
+                        border: '1px solid #bae6fd',
+                        borderRadius: '20px',
+                        marginBottom: '10px',
+                        fontSize: '13px',
+                        color: '#0c4a6e'
+                    }}>
+                        <FileText size={14} style={{ color: '#0284c7' }} />
+                        <span style={{ fontWeight: 500 }}>{uploadedFile.name}</span>
+                        <span style={{ color: '#0284c7', fontSize: '11px' }}>{(uploadedFile.size / 1024).toFixed(1)} KB</span>
+                        <button
+                            onClick={handleRemoveFile}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                padding: '0',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '12px 16px',
-                                background: '#f0f9ff',
-                                border: '1px solid #bae6fd',
-                                borderRadius: '8px',
-                                marginBottom: '12px'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <File size={16} style={{ color: '#0284c7' }} />
-                                    <div>
-                                        <div style={{ fontSize: '14px', fontWeight: '500', color: '#0c4a6e' }}>
-                                            {uploadedFile.name}
-                                        </div>
-                                        <div style={{ fontSize: '12px', color: '#0284c7' }}>
-                                            {(uploadedFile.size / 1024).toFixed(1)} KB • Ready for questions
-                                        </div>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={handleRemoveFile}
-                                    style={{
-                                        padding: '4px',
-                                        background: 'transparent',
-                                        border: 'none',
-                                        color: '#ef4444',
-                                        cursor: 'pointer',
-                                        borderRadius: '4px'
-                                    }}
-                                    title="Remove file"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
-                        )}
+                                marginLeft: '2px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+                            title="Remove file"
+                        >
+                            <X size={14} />
+                        </button>
                     </div>
                 )}
-                
+
                 <div style={{
                     display: 'flex',
-                    gap: '12px',
+                    alignItems: 'center',
+                    gap: '8px',
                     background: '#f9fafb',
-                    padding: isFullScreen ? '12px 20px' : '10px 14px',
-                    borderRadius: '16px',
+                    padding: isFullScreen ? '8px 12px' : '8px 12px',
+                    borderRadius: '24px',
                     border: '1px solid #e5e7eb'
                 }}>
+                    {/* Paperclip upload button */}
+                    {isFullScreen && (
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadLoading}
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: uploadLoading ? '#d1d5db' : '#6b7280',
+                                cursor: uploadLoading ? 'not-allowed' : 'pointer',
+                                padding: '6px',
+                                borderRadius: '50%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s',
+                                flexShrink: 0
+                            }}
+                            onMouseEnter={(e) => { if (!uploadLoading) { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = '#111827'; } }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = uploadLoading ? '#d1d5db' : '#6b7280'; }}
+                            title={uploadLoading ? 'Uploading...' : 'Attach PDF/DOCX'}
+                        >
+                            <Paperclip size={20} />
+                        </button>
+                    )}
+
                     <input
                         value={input}
                         onChange={(e) => {
@@ -655,31 +630,32 @@ const ChatDialog = ({
                             border: 'none',
                             color: '#111827',
                             outline: 'none',
-                            fontSize: isFullScreen ? '16px' : '14px'
+                            fontSize: isFullScreen ? '16px' : '14px',
+                            padding: '6px 4px'
                         }}
                     />
 
-
                     <button
                         onClick={handleSend}
-                        disabled={loading}
+                        disabled={loading || !input.trim()}
                         style={{
-                            background: '#2563eb',
+                            background: (loading || !input.trim()) ? '#d1d5db' : '#111827',
                             border: 'none',
                             color: 'white',
-                            cursor: 'pointer',
-                            opacity: loading ? 0.5 : 1,
-                            padding: '10px',
-                            borderRadius: '12px',
+                            cursor: (loading || !input.trim()) ? 'default' : 'pointer',
+                            padding: '8px',
+                            borderRadius: '50%',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            transition: 'all 0.2s'
+                            transition: 'all 0.2s',
+                            flexShrink: 0,
+                            width: '36px',
+                            height: '36px'
                         }}
                     >
-                        <Send size={isFullScreen ? 20 : 18} />
+                        <Send size={16} style={{ marginLeft: '1px' }} />
                     </button>
-
                 </div>
                 {isFullScreen && (
                     <p style={{ marginTop: '12px', fontSize: '12px', opacity: 0.4, textAlign: 'center' }}>
