@@ -42,13 +42,56 @@ def parse_xlsx(file_content: bytes, filename: str) -> List[Dict]:
 
 
 def parse_pdf(file_content: bytes, filename: str) -> List[Dict]:
-    """Parse PDF and extract clauses."""
+    """Parse PDF and extract clauses + table data."""
     reader = PdfReader(BytesIO(file_content))
     clauses = []
     
     # regex for clause-like patterns
     pattern = r'(?m)^(\d+\.[\d\.]+|[A-Z]\.[\d\.]+|Article\s+\d+:?)\s+(.*)'
     
+    # --- Extract tables using pdfplumber ---
+    try:
+        import pdfplumber
+        pdf_plumber = pdfplumber.open(BytesIO(file_content))
+        
+        for page_num, page in enumerate(pdf_plumber.pages):
+            tables = page.extract_tables()
+            for t_idx, table in enumerate(tables):
+                if not table or len(table) < 2:
+                    continue
+                
+                # Convert table to markdown-style text
+                # First row as headers
+                headers = [str(cell).strip() if cell else "" for cell in table[0]]
+                table_lines = [" | ".join(headers)]
+                table_lines.append(" | ".join(["---"] * len(headers)))
+                
+                for row in table[1:]:
+                    cells = [str(cell).strip() if cell else "" for cell in row]
+                    table_lines.append(" | ".join(cells))
+                
+                table_text = "\n".join(table_lines)
+                
+                if len(table_text.strip()) > 30:
+                    # Try to find a table caption/title from nearby text
+                    page_text = page.extract_text() or ""
+                    # Look for "Table X.Y.Z" references near this table
+                    table_ref_match = re.search(r'(Table\s+[\d\.]+[-\d]*)', page_text)
+                    table_label = table_ref_match.group(1) if table_ref_match else f"Table-P{page_num+1}-T{t_idx+1}"
+                    
+                    clauses.append({
+                        "clause_id": f"TBL-{page_num+1}-{t_idx+1}",
+                        "text": f"{table_label}:\n{table_text}",
+                        "page_number": page_num + 1,
+                        "severity": "DATA"
+                    })
+        
+        pdf_plumber.close()
+        print(f"DEBUG: Extracted {sum(1 for c in clauses if c['clause_id'].startswith('TBL'))} tables from {filename}")
+    except Exception as e:
+        print(f"DEBUG: pdfplumber table extraction failed for {filename}: {e}")
+    
+    # --- Extract regular text using pypdf ---
     for page_num, page in enumerate(reader.pages):
         page_text = page.extract_text()
         if not page_text:
@@ -144,7 +187,7 @@ def parse_docx(file_content: bytes, filename: str) -> List[Dict]:
     return clauses
 
 
-def chunk_text(text: str, chunk_size: int = 2000, chunk_overlap: int = 400) -> List[str]:
+def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 150) -> List[str]:
     """Simple character-based chunking as a proxy for token-based chunking."""
     if not text:
         return []
@@ -215,7 +258,8 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
             })
     
     # Ingest into Vector DB
+    chunk_count = len(ingest_clauses)
     if ingest_clauses:
         rag_engine.ingest_documents(ingest_clauses, session_id=session_id, namespace=namespace)
     
-    return doc.id
+    return doc.id, chunk_count

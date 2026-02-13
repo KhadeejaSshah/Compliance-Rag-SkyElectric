@@ -153,3 +153,20 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Source item dropdown */
+.source-item div:first-child:hover {
+  background: rgba(99, 102, 241, 0.15) !important;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

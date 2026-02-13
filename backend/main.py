@@ -50,6 +50,41 @@ async def session_cleanup_task():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # List KB documents on startup
+    try:
+        if rag_engine.use_pinecone:
+            from pinecone import Pinecone
+            pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+            index = pc.Index(rag_engine.index_name)
+            stats = index.describe_index_stats()
+            permanent_ns = stats.get('namespaces', {}).get('permanent', {})
+            vector_count = permanent_ns.get('vector_count', 0)
+            print(f"\n{'='*60}")
+            print(f"  KNOWLEDGE BASE: {vector_count} vectors in 'permanent' namespace")
+            
+            # Sample a few vectors to list doc names
+            if vector_count > 0:
+                try:
+                    # Use a dummy query to fetch some KB docs and extract unique filenames
+                    sample_results = rag_engine.vector_store.similarity_search(
+                        "compliance regulation standard", k=min(50, vector_count), namespace="permanent"
+                    )
+                    doc_names = set()
+                    for doc in sample_results:
+                        name = doc.metadata.get('doc_name', doc.metadata.get('source', 'Unknown'))
+                        doc_names.add(name)
+                    print(f"  Documents found ({len(doc_names)} unique):")
+                    for name in sorted(doc_names):
+                        print(f"    📄 {name}")
+                except Exception as e:
+                    print(f"  (Could not list doc names: {e})")
+            
+            # List all namespaces
+            print(f"  All namespaces: {list(stats.get('namespaces', {}).keys())}")
+            print(f"{'='*60}\n")
+    except Exception as e:
+        print(f"DEBUG: KB listing failed: {e}")
+    
     # Start cleanup task
     cleanup_task = asyncio.create_task(session_cleanup_task())
     yield
@@ -90,15 +125,15 @@ async def upload_file(
     
     print(f"DEBUG: Uploading {file.filename} as {file_type} to session {session_id}")
     content = await file.read()
-    doc_id = parse_document(content, file.filename, file_type, version, namespace=namespace, session_id=session_id)
+    doc_id, chunk_count = parse_document(content, file.filename, file_type, version, namespace=namespace, session_id=session_id)
     
     # Save the file to physical storage
     file_path = os.path.join(STORAGE_DIR, f"{doc_id}_{file.filename}")
     with open(file_path, "wb") as f:
         f.write(content)
         
-    print(f"DEBUG: Uploaded {file.filename}, doc_id: {doc_id} in session {session_id}")
-    return {"doc_id": doc_id, "filename": file.filename}
+    print(f"DEBUG: Uploaded {file.filename}, doc_id: {doc_id}, chunks: {chunk_count} in session {session_id}")
+    return {"doc_id": doc_id, "filename": file.filename, "chunk_count": chunk_count}
 
 @app.get("/documents/{doc_id}/download")
 def download_document(doc_id: int, session_id: str = Depends(get_sid)):
@@ -282,33 +317,105 @@ async def chat_with_docs(
     # Retrieve chat history
     history = store.get_history(session_id)
     
+    # Get list of uploaded document names for this session
+    session_docs = store.get_all_documents(session_id)
+    uploaded_doc_names = [d.filename for d in session_docs]
+    
     # Search across documents with optional knowledge base
-    similar_docs = rag_engine.retrieve_similar_clauses(query, top_k=15, use_kb=use_kb, session_id=session_id)
+    similar_docs = rag_engine.retrieve_similar_clauses(query, top_k=20, use_kb=use_kb, session_id=session_id)
+    
+    # Separate KB and DOC results
+    kb_results = [(d, s) for d, s in similar_docs if d.metadata.get('source_type') == 'KB'] if similar_docs else []
+    doc_results = [(d, s) for d, s in similar_docs if d.metadata.get('source_type') != 'KB'] if similar_docs else []
+    
+    print(f"DEBUG /chat: use_kb={use_kb}, total={len(similar_docs) if similar_docs else 0} (KB={len(kb_results)}, DOC={len(doc_results)})")
     
     if not similar_docs:
-        return {"answer": "I couldn't find any relevant information in your documents. Please upload some documents first."}
+        # Still allow the LLM to answer from history/general knowledge if no docs found
+        if history:
+            answer = rag_engine.answer_general_question(query, "No document context available.", history=history, uploaded_doc_names=uploaded_doc_names)
+            store.add_history_message(session_id, "user", query)
+            store.add_history_message(session_id, "bot", answer)
+            return {"answer": answer}
+        return {"answer": "I couldn't find any relevant information. Please upload some documents or enable the Knowledge Base to get started."}
     
-    # Build context with document NAME (not just ID), numbered for citation mapping
-    context_parts = []
-    for i, (d, score) in enumerate(similar_docs, 1):
-        # Fallback to metadata if store is cleared (e.g. for permanent KB)
-        doc_id = d.metadata.get('doc_id')
-        doc_obj = store.get_document(session_id, int(doc_id)) if doc_id else None
-        doc_name = doc_obj.filename if doc_obj else d.metadata.get('doc_name', 'Unknown')
-        clause_id = d.metadata.get('clause_id', 'N/A')
-        page = d.metadata.get('page_number', 'N/A')
-        source_type = d.metadata.get('source_type', 'DOC')
+    # Build separate context strings for KB and DOC
+    def build_context(results, label):
+        parts = []
+        refs = []
+        for i, (d, score) in enumerate(results, 1):
+            doc_id = d.metadata.get('doc_id')
+            doc_obj = store.get_document(session_id, int(doc_id)) if doc_id else None
+            doc_name = doc_obj.filename if doc_obj else d.metadata.get('doc_name', 'Unknown')
+            clause_id = d.metadata.get('clause_id', 'N/A')
+            page = d.metadata.get('page_number', 'N/A')
+            
+            parts.append(
+                f"REF [{label} {i}]:\n"
+                f"File: {doc_name} | Clause: {clause_id} | Page: {page}\n"
+                f"Content: {d.page_content}"
+            )
+            snippet = d.page_content[:200].replace('\n', ' ').replace('\r', '')
+            refs.append(f"- [{label}] File: {doc_name} | Clause: {clause_id} | Page: {page} ||| {snippet}")
         
-        context_parts.append(
-            f"REF [{source_type} {i}]:\n"
-            f"File: {doc_name} | Clause: {clause_id} | Page: {page}\n"
-            f"Content: {d.page_content}"
-        )
+        return "\n\n---\n\n".join(parts), "\n".join(refs)
     
-    context = "\n\n---\n\n".join(context_parts)
+    kb_context, kb_refs = build_context(kb_results, "KB") if kb_results else ("", "")
+    doc_context, doc_refs = build_context(doc_results, "DOC") if doc_results else ("", "")
     
-    # Use LLM to answer the question based on context and history
-    answer = rag_engine.answer_general_question(query, context, history=history)
+    # --- DUAL-RETRIEVAL + SYNTHESIS PIPELINE ---
+    
+    if kb_results and doc_results:
+        # Both sources have results → run both LLM calls in parallel, then synthesize
+        print("DEBUG /chat: Dual-retrieval mode — running KB + DOC calls in parallel")
+        
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
+        
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            kb_future = loop.run_in_executor(
+                pool, 
+                lambda: rag_engine.answer_from_source(query, kb_context, "KNOWLEDGE BASE", history)
+            )
+            doc_future = loop.run_in_executor(
+                pool,
+                lambda: rag_engine.answer_from_source(query, doc_context, "UPLOADED DOCUMENT", history)
+            )
+            kb_answer, doc_answer = await asyncio.gather(kb_future, doc_future)
+        
+        print(f"DEBUG /chat: KB answer length={len(kb_answer)}, DOC answer length={len(doc_answer)}")
+        
+        # Check if either returned no relevant info
+        kb_has_info = "NO_RELEVANT_INFO" not in kb_answer
+        doc_has_info = "NO_RELEVANT_INFO" not in doc_answer
+        
+        if kb_has_info and doc_has_info:
+            # Both have useful info → synthesize
+            answer = rag_engine.synthesize_responses(query, kb_answer, doc_answer, kb_refs, doc_refs)
+        elif kb_has_info:
+            answer = kb_answer + f"\n\nSOURCES:\n{kb_refs}"
+        elif doc_has_info:
+            answer = doc_answer + f"\n\nSOURCES:\n{doc_refs}"
+        else:
+            answer = rag_engine.answer_general_question(query, "No relevant context found.", history=history)
+    
+    elif kb_results:
+        # Only KB results
+        print("DEBUG /chat: KB-only mode")
+        answer = rag_engine.answer_from_source(query, kb_context, "KNOWLEDGE BASE", history)
+        if "NO_RELEVANT_INFO" not in answer:
+            answer += f"\n\nSOURCES:\n{kb_refs}"
+        else:
+            answer = rag_engine.answer_general_question(query, "No relevant context found.", history=history)
+    
+    else:
+        # Only DOC results
+        print("DEBUG /chat: DOC-only mode")
+        answer = rag_engine.answer_from_source(query, doc_context, "UPLOADED DOCUMENT", history)
+        if "NO_RELEVANT_INFO" not in answer:
+            answer += f"\n\nSOURCES:\n{doc_refs}"
+        else:
+            answer = rag_engine.answer_general_question(query, "No relevant context found.", history=history)
     
     # Save to history
     store.add_history_message(session_id, "user", query)
