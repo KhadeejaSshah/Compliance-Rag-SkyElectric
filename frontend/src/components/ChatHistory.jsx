@@ -30,7 +30,7 @@ const ChatHistory = ({ history, activeChatId, onSelectChat, onDeleteChat, onNewC
                     New Chat
                 </button>
             </div>
-            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '1000px', overflowY: 'auto' }}>
                 {sortedHistory.map(chat => {
                     const firstUserMessage = chat.messages.find(m => m.role === 'user');
                     const title = firstUserMessage ? firstUserMessage.content : 'New Chat';

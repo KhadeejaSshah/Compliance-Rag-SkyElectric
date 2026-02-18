@@ -8,6 +8,45 @@ import ReactiveBackground from './ReactiveBackground';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
+// Hook to get screen dimensions
+const useWindowSize = () => {
+    const [windowSize, setWindowSize] = useState({
+        width: undefined,
+        height: undefined,
+        isMobile: false,
+        isTablet: false,
+        isTabletPortrait: false,
+        isTabletLandscape: false,
+        isDesktop: false
+    });
+
+    useEffect(() => {
+        const handleResize = () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const isTabletDevice = width >= 768 && width < 1024;
+            const isPortrait = height > width;
+            
+            setWindowSize({
+                width,
+                height,
+                isMobile: width < 768,
+                isTablet: isTabletDevice,
+                isTabletPortrait: isTabletDevice && isPortrait,
+                isTabletLandscape: isTabletDevice && !isPortrait,
+                isDesktop: width >= 1024
+            });
+        };
+
+        window.addEventListener("resize", handleResize);
+        handleResize();
+
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
+    return windowSize;
+};
+
 const ChatDialog = ({
     isFullScreen = false,
     useKb = false,
@@ -23,6 +62,9 @@ const ChatDialog = ({
     const [uploadLoading, setUploadLoading] = useState(false);
     const scrollRef = useRef();
     const fileInputRef = useRef();
+    
+    // Get responsive dimensions
+    const { width, height, isMobile, isTablet, isTabletPortrait, isTabletLandscape, isDesktop } = useWindowSize();
 
 
     const formatTime = (timestamp) => {
@@ -343,31 +385,32 @@ const ChatDialog = ({
 
     const containerStyle = isFullScreen ? {
         width: '100%',
-        maxWidth: '1000px',
+        maxWidth: isMobile ? '100%' : isTabletPortrait ? '95%' : isTabletLandscape ? '90%' : '900px',
         height: '100%',
-        maxHeight: '800px',
+        maxHeight: isMobile ? '100vh' : isTabletPortrait ? '95vh' : isTabletLandscape ? '85vh' : '85vh',
         background: '#ffffff',
         border: '1px solid #e5e7eb',
-        borderRadius: '24px',
+        borderRadius: isMobile ? '0' : isTablet ? '12px' : '20px',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.05)',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
         overflow: 'hidden',
-        position: 'relative'
+        position: 'relative',
+        margin: '0 auto'
     } : {
-
         position: 'fixed',
-        bottom: '100px',
-        right: '24px',
-        width: '400px',
-        height: '500px',
-        background: 'rgba(20, 20, 25, 0.95)',
+        bottom: isMobile ? '10px' : isTabletPortrait ? '10px' : '20px',
+        right: isMobile ? '10px' : isTabletPortrait ? '10px' : '20px',
+        width: isMobile ? 'calc(100vw - 20px)' : isTabletPortrait ? 'calc(100vw - 20px)' : isTabletLandscape ? '400px' : '380px',
+        height: isMobile ? 'calc(100vh - 80px)' : isTabletPortrait ? 'calc(100vh - 80px)' : isTabletLandscape ? '70vh' : '75vh',
+        maxHeight: isMobile ? 'calc(100vh - 80px)' : isTabletPortrait ? 'calc(100vh - 80px)' : isTabletLandscape ? '500px' : '600px',
+        background: 'rgba(255, 255, 255, 0.98)',
         backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '16px',
+        border: '1px solid rgba(0, 0, 0, 0.1)',
+        borderRadius: isMobile ? '16px' : isTablet ? '12px' : '12px',
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
         zIndex: 101,
         overflow: 'hidden'
     };
@@ -376,102 +419,147 @@ const ChatDialog = ({
         <div style={containerStyle}>
             {/* Header */}
             <div style={{
-                padding: isFullScreen ? '24px' : '16px',
+                padding: isMobile ? '12px 16px' : isTabletPortrait ? '12px 16px' : isTabletLandscape ? '10px 16px' : '16px 24px',
                 background: '#ffffff',
                 borderBottom: '1px solid #f3f4f6',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexShrink: 0
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-
+                <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '8px' : '12px' }}>
                     <div style={{
-                        width: '10px',
-                        height: '10px',
+                        width: isMobile || isTabletPortrait ? '8px' : '10px',
+                        height: isMobile || isTabletPortrait ? '8px' : '10px',
                         borderRadius: '50%',
                         background: '#10b981',
-                        boxShadow: '0 0 10px #10b981'
+                        boxShadow: '0 0 8px #10b981'
                     }}></div>
-                    <span style={{ fontWeight: 'bold', fontSize: isFullScreen ? '18px' : '14px', color: '#111827' }}>
+                    <span style={{ 
+                        fontWeight: 'bold', 
+                        fontSize: isMobile ? '14px' : isTabletPortrait ? '14px' : isTabletLandscape ? '15px' : '16px', 
+                        color: '#111827' 
+                    }}>
                         SkyEngineering AI
                     </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {isFullScreen && (
-                        <button onClick={onNewChat} title="Start New Chat" style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
-                            <PlusSquare size={20} />
+                        <button onClick={onNewChat} title="Start New Chat" style={{ 
+                            background: 'transparent', 
+                            border: 'none', 
+                            color: '#6b7280', 
+                            cursor: 'pointer',
+                            padding: '4px'
+                        }}>
+                            <PlusSquare size={isMobile || isTabletPortrait ? 16 : 18} />
                         </button>
                     )}
                     {!isFullScreen && (
-                        <button onClick={() => setIsOpen(false)} style={{ background: 'transparent', border: 'none', color: '#6b7280', cursor: 'pointer' }}>
-                            <X size={20} />
+                        <button onClick={() => setIsOpen(false)} style={{ 
+                            background: 'transparent', 
+                            border: 'none', 
+                            color: '#6b7280', 
+                            cursor: 'pointer',
+                            padding: '4px'
+                        }}>
+                            <X size={isMobile || isTabletPortrait ? 16 : 18} />
                         </button>
                     )}
                 </div>
-
             </div>
 
             {/* Messages */}
             <div ref={scrollRef} style={{
                 flex: 1,
-                padding: isFullScreen ? '32px' : '16px',
-                overflowY: messages.length === 0 ? 'hidden' : 'auto',
+                padding: isMobile ? '12px' : isTabletPortrait ? '12px' : isTabletLandscape ? '10px 14px' : '20px',
+                overflowY: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '16px'
+                gap: isMobile || isTabletPortrait ? '10px' : '12px',
+                minHeight: 0 // Important for flex overflow
             }}>
                 {messages.length === 0 && (
-                    <div style={{ textAlign: 'center', marginTop: isFullScreen ? '40px' : '20px', padding: '0 20px' }}>
-                        <img src={logo} alt="SkyChat Logo" style={{ width: '100px', height: '80px', marginBottom: '0px' }} />
-                        <h1 style={{ fontSize: isFullScreen ? '32px' : '24px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' }}>
+                    <div style={{ 
+                        textAlign: 'center', 
+                        marginTop: isMobile || isTabletPortrait ? '5px' : '15px', 
+                        padding: isMobile ? '0 10px' : '0 15px' 
+                    }}>
+                        <img src={logo} alt="SkyChat Logo" style={{ 
+                            width: isMobile ? '60px' : isTabletPortrait ? '65px' : isTabletLandscape ? '50px' : '80px', 
+                            height: isMobile ? '48px' : isTabletPortrait ? '52px' : isTabletLandscape ? '40px' : '64px', 
+                            marginBottom: isMobile || isTabletPortrait ? '6px' : '8px' 
+                        }} />
+                        <h1 style={{ 
+                            fontSize: isMobile ? '18px' : isTabletPortrait ? '19px' : isTabletLandscape ? '16px' : '24px', 
+                            fontWeight: 'bold', 
+                            color: '#111827', 
+                            marginBottom: isMobile || isTabletPortrait ? '4px' : '6px',
+                            lineHeight: 1.2
+                        }}>
                             Welcome to SkyEngineering
                         </h1>
-                        <p style={{ fontSize: isFullScreen ? '18px' : '16px', color: '#6b7280', marginBottom: '38px' }}>
+                        <p style={{ 
+                            fontSize: isMobile ? '13px' : isTabletPortrait ? '13px' : isTabletLandscape ? '11px' : '16px', 
+                            color: '#6b7280', 
+                            marginBottom: isMobile ? '15px' : isTabletPortrait ? '20px' : isTabletLandscape ? '15px' : '30px',
+                            lineHeight: 1.3
+                        }}>
                             Ask questions, get help, or just chat!
                         </p>
 
                         <div style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                            gap: '10px',
-                            maxWidth: '700px',
+                            gridTemplateColumns: isMobile ? '1fr' : isTabletPortrait ? '1fr' : isTabletLandscape ? 'repeat(2, 1fr)' : 'repeat(2, 1fr)',
+                            gap: isMobile ? '6px' : isTabletPortrait ? '6px' : isTabletLandscape ? '4px' : '8px',
+                            maxWidth: '100%',
                             margin: '0 auto'
                         }}>
                             {[
-                                { title: 'Knowledge Base', desc: 'Answers grounded in verified compliance data', icon: <Shield size={20} color="#6366f1" />, bg: '#f5f3ff' },
-                                { title: 'Document Analysis', desc: 'Upload files and get instant insights', icon: <FileText size={20} color="#14b8a6" />, bg: '#f0fdfa' },
-                                { title: 'Session Memory', desc: 'I remember our entire conversation', icon: <MessageSquare size={20} color="#f59e0b" />, bg: '#fffbeb' },
-                                { title: 'Source Citations', desc: 'Every answer traceable to its source', icon: <Globe size={20} color="#3b82f6" />, bg: '#eff6ff' }
+                                { title: 'Knowledge Base', desc: 'Verified compliance data', icon: <Shield size={isMobile || isTabletPortrait ? 14 : isTabletLandscape ? 12 : 16} color="#6366f1" />, bg: '#f5f3ff' },
+                                { title: 'Document Analysis', desc: 'Upload files for insights', icon: <FileText size={isMobile || isTabletPortrait ? 14 : isTabletLandscape ? 12 : 16} color="#14b8a6" />, bg: '#f0fdfa' },
+                                { title: 'Session Memory', desc: 'Remembers conversation', icon: <MessageSquare size={isMobile || isTabletPortrait ? 14 : isTabletLandscape ? 12 : 16} color="#f59e0b" />, bg: '#fffbeb' },
+                                { title: 'Source Citations', desc: 'Traceable references', icon: <Globe size={isMobile || isTabletPortrait ? 14 : isTabletLandscape ? 12 : 16} color="#3b82f6" />, bg: '#eff6ff' }
                             ].map((feature, i) => (
                                 <div key={i} style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '16px',
-                                    padding: '20px',
+                                    gap: isMobile || isTabletPortrait ? '8px' : isTabletLandscape ? '6px' : '12px',
+                                    padding: isMobile || isTabletPortrait ? '10px' : isTabletLandscape ? '8px' : '16px',
                                     background: feature.bg,
                                     border: '1px solid #f3f4f6',
-                                    borderRadius: '20px',
+                                    borderRadius: isMobile || isTabletPortrait ? '10px' : isTabletLandscape ? '8px' : '16px',
                                     textAlign: 'left',
-                                    transition: 'transform 0.2s',
                                     cursor: 'default'
                                 }}>
                                     <div style={{
-                                        width: '48px',
-                                        height: '48px',
-                                        borderRadius: '12px',
+                                        width: isMobile || isTabletPortrait ? '28px' : isTabletLandscape ? '24px' : '36px',
+                                        height: isMobile || isTabletPortrait ? '28px' : isTabletLandscape ? '24px' : '36px',
+                                        borderRadius: isMobile || isTabletPortrait ? '6px' : isTabletLandscape ? '5px' : '10px',
                                         background: '#ffffff',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         flexShrink: 0,
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                                        boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
                                         border: '1px solid #f3f4f6'
                                     }}>
                                         {feature.icon}
                                     </div>
-                                    <div>
-                                        <h4 style={{ fontSize: '15px', fontWeight: 700, color: '#111827', marginBottom: '4px' }}>{feature.title}</h4>
-                                        <p style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.4 }}>{feature.desc}</p>
+                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                        <h4 style={{ 
+                                            fontSize: isMobile || isTabletPortrait ? '10px' : isTabletLandscape ? '9px' : '12px', 
+                                            fontWeight: 600, 
+                                            color: '#111827', 
+                                            marginBottom: '2px',
+                                            lineHeight: 1.2
+                                        }}>{feature.title}</h4>
+                                        <p style={{ 
+                                            fontSize: isMobile || isTabletPortrait ? '8px' : isTabletLandscape ? '7px' : '10px', 
+                                            color: '#6b7280', 
+                                            lineHeight: 1.3,
+                                            margin: 0
+                                        }}>{feature.desc}</p>
                                     </div>
                                 </div>
                             ))}
@@ -493,14 +581,16 @@ const ChatDialog = ({
                         }}
                     >
                         <div style={{
-                            padding: m.role === 'system' ? '8px 16px' : (isFullScreen ? '12px 20px' : '10px 14px'),
-                            borderRadius: m.role === 'system' ? '8px' : (m.role === 'user' ? '20px 20px 4px 20px' : '20px 20px 20px 4px'),
+                            padding: m.role === 'system' ? '6px 12px' : (isMobile || isTabletPortrait ? '8px 12px' : isTabletLandscape ? '6px 10px' : '10px 16px'),
+                            borderRadius: m.role === 'system' ? '8px' : (m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px'),
                             background: m.role === 'user' ? '#2563eb' : m.role === 'system' ? '#f0f9ff' : '#f3f4f6',
                             color: m.role === 'user' ? '#ffffff' : m.role === 'system' ? '#0c4a6e' : '#1f2937',
-                            fontSize: m.role === 'system' ? '13px' : (isFullScreen ? '15px' : '14px'),
-                            lineHeight: 1.5,
+                            fontSize: isMobile || isTabletPortrait ? '11px' : isTabletLandscape ? '10px' : isTablet ? '13px' : '14px',
+                            lineHeight: 1.4,
                             textAlign: m.role === 'system' ? 'center' : 'left',
-                            border: m.role === 'system' ? '1px solid #bae6fd' : 'none'
+                            border: m.role === 'system' ? '1px solid #bae6fd' : 'none',
+                            wordWrap: 'break-word',
+                            maxWidth: '100%'
                         }}>
                             {/* {m.content} */}
                             {m.role === 'bot'
@@ -509,12 +599,12 @@ const ChatDialog = ({
                         </div>
                         {m.timestamp && m.role !== 'system' && (
                             <div style={{
-                                fontSize: '11px',
+                                fontSize: '10px',
                                 color: '#9ca3af',
                                 alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                                 marginTop: '2px',
-                                paddingLeft: m.role === 'user' ? '0' : '8px',
-                                paddingRight: m.role === 'user' ? '8px' : '0'
+                                paddingLeft: m.role === 'user' ? '0' : '6px',
+                                paddingRight: m.role === 'user' ? '6px' : '0'
                             }}>
                                 {formatTime(m.timestamp)}
                             </div>
@@ -522,14 +612,24 @@ const ChatDialog = ({
                     </motion.div>
                 ))}
                 {loading && (
-                    <div style={{ alignSelf: 'flex-start', padding: '12px 18px', borderRadius: '16px 16px 16px 0', background: 'rgba(255,255,255,0.08)' }}>
+                    <div style={{ 
+                        alignSelf: 'flex-start', 
+                        padding: isMobile || isTabletPortrait ? '6px 10px' : isTabletLandscape ? '5px 8px' : '10px 16px', 
+                        borderRadius: '16px 16px 16px 4px', 
+                        background: '#f3f4f6' 
+                    }}>
                         <div className="dot-flashing"></div>
                     </div>
                 )}
             </div>
 
             {/* Input */}
-            <div style={{ padding: isFullScreen ? '16px 24px' : '16px', background: '#ffffff', borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ 
+                padding: isMobile || isTabletPortrait ? '8px 12px' : isTabletLandscape ? '6px 10px' : '12px 16px', 
+                background: '#ffffff', 
+                borderTop: '1px solid #f3f4f6',
+                flexShrink: 0
+            }}>
                 {/* Hidden file input */}
                 <input
                     ref={fileInputRef}
@@ -544,18 +644,23 @@ const ChatDialog = ({
                     <div style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        padding: '6px 12px',
+                        gap: '4px',
+                        padding: '3px 6px',
                         background: '#f0f9ff',
                         border: '1px solid #bae6fd',
-                        borderRadius: '20px',
-                        marginBottom: '10px',
-                        fontSize: '13px',
+                        borderRadius: '12px',
+                        marginBottom: '6px',
+                        fontSize: isMobile || isTabletPortrait ? '9px' : isTabletLandscape ? '8px' : '11px',
                         color: '#0c4a6e'
                     }}>
-                        <FileText size={14} style={{ color: '#0284c7' }} />
-                        <span style={{ fontWeight: 500 }}>{uploadedFile.name}</span>
-                        <span style={{ color: '#0284c7', fontSize: '11px' }}>{(uploadedFile.size / 1024).toFixed(1)} KB</span>
+                        <FileText size={isMobile || isTabletPortrait ? 8 : isTabletLandscape ? 7 : 12} style={{ color: '#0284c7' }} />
+                        <span style={{ 
+                            fontWeight: 500, 
+                            maxWidth: isMobile || isTabletPortrait ? '100px' : isTabletLandscape ? '80px' : '120px', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            whiteSpace: 'nowrap' 
+                        }}>{uploadedFile.name}</span>
                         <button
                             onClick={handleRemoveFile}
                             style={{
@@ -563,16 +668,13 @@ const ChatDialog = ({
                                 border: 'none',
                                 color: '#94a3b8',
                                 cursor: 'pointer',
-                                padding: '0',
+                                padding: '1px',
                                 display: 'flex',
-                                alignItems: 'center',
-                                marginLeft: '2px'
+                                alignItems: 'center'
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                            onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
                             title="Remove file"
                         >
-                            <X size={14} />
+                            <X size={isMobile || isTabletPortrait ? 8 : isTabletLandscape ? 7 : 12} />
                         </button>
                     </div>
                 )}
@@ -580,10 +682,10 @@ const ChatDialog = ({
                 <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '4px',
                     background: '#f9fafb',
-                    padding: isFullScreen ? '8px 12px' : '8px 12px',
-                    borderRadius: '24px',
+                    padding: isMobile || isTabletPortrait ? '3px 6px' : isTabletLandscape ? '2px 5px' : '6px 10px',
+                    borderRadius: '16px',
                     border: '1px solid #e5e7eb'
                 }}>
                     {/* Paperclip upload button */}
@@ -596,7 +698,7 @@ const ChatDialog = ({
                                 border: 'none',
                                 color: uploadLoading ? '#d1d5db' : '#6b7280',
                                 cursor: uploadLoading ? 'not-allowed' : 'pointer',
-                                padding: '6px',
+                                padding: isMobile || isTabletPortrait ? '1px' : isTabletLandscape ? '0px' : '4px',
                                 borderRadius: '50%',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -604,11 +706,9 @@ const ChatDialog = ({
                                 transition: 'all 0.2s',
                                 flexShrink: 0
                             }}
-                            onMouseEnter={(e) => { if (!uploadLoading) { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.color = '#111827'; } }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = uploadLoading ? '#d1d5db' : '#6b7280'; }}
                             title={uploadLoading ? 'Uploading...' : 'Attach PDF/DOCX'}
                         >
-                            <Paperclip size={20} />
+                            <Paperclip size={isMobile || isTabletPortrait ? 12 : isTabletLandscape ? 10 : 16} />
                         </button>
                     )}
 
@@ -630,8 +730,8 @@ const ChatDialog = ({
                             border: 'none',
                             color: '#111827',
                             outline: 'none',
-                            fontSize: isFullScreen ? '16px' : '14px',
-                            padding: '6px 4px'
+                            fontSize: isMobile || isTabletPortrait ? '11px' : isTabletLandscape ? '10px' : isTablet ? '13px' : '14px',
+                            padding: '3px'
                         }}
                     />
 
@@ -643,23 +743,29 @@ const ChatDialog = ({
                             border: 'none',
                             color: 'white',
                             cursor: (loading || !input.trim()) ? 'default' : 'pointer',
-                            padding: '8px',
+                            padding: isMobile || isTabletPortrait ? '4px' : isTabletLandscape ? '3px' : '6px',
                             borderRadius: '50%',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             transition: 'all 0.2s',
                             flexShrink: 0,
-                            width: '36px',
-                            height: '36px'
+                            width: isMobile || isTabletPortrait ? '24px' : isTabletLandscape ? '20px' : '32px',
+                            height: isMobile || isTabletPortrait ? '24px' : isTabletLandscape ? '20px' : '32px'
                         }}
                     >
-                        <Send size={16} style={{ marginLeft: '1px' }} />
+                        <Send size={isMobile || isTabletPortrait ? 10 : isTabletLandscape ? 8 : 14} style={{ marginLeft: '1px' }} />
                     </button>
                 </div>
                 {isFullScreen && (
-                    <p style={{ marginTop: '12px', fontSize: '12px', opacity: 0.4, textAlign: 'center' }}>
-                        SkyEngineering can make mistakes. Consider checking important information.
+                    <p style={{ 
+                        marginTop: isMobile || isTabletPortrait ? '6px' : isTabletLandscape ? '4px' : '8px', 
+                        fontSize: isMobile || isTabletPortrait ? '8px' : isTabletLandscape ? '7px' : '10px', 
+                        opacity: 0.5, 
+                        textAlign: 'center',
+                        lineHeight: 1.2
+                    }}>
+                        SkyEngineering can make mistakes. Check important info.
                     </p>
                 )}
             </div>
@@ -711,9 +817,26 @@ const ChatDialog = ({
 
     if (isFullScreen) {
         return (
-            <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+            <div style={{ 
+                position: 'relative', 
+                width: '100%', 
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: isMobile ? '10px' : '20px',
+                boxSizing: 'border-box'
+            }}>
                 <ReactiveBackground state={animationState} />
-                <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <div style={{ 
+                    position: 'relative', 
+                    zIndex: 1, 
+                    width: '100%', 
+                    height: '100%',
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center' 
+                }}>
                     {chatContent}
                 </div>
             </div>
@@ -729,10 +852,10 @@ const ChatDialog = ({
                     onClick={() => setIsOpen(true)}
                     style={{
                         position: 'fixed',
-                        bottom: '24px',
-                        right: '24px',
-                        width: '60px',
-                        height: '60px',
+                        bottom: isMobile ? '20px' : '24px',
+                        right: isMobile ? '20px' : '24px',
+                        width: isMobile ? '50px' : '60px',
+                        height: isMobile ? '50px' : '60px',
                         borderRadius: '50%',
                         background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
                         color: 'white',
@@ -748,7 +871,7 @@ const ChatDialog = ({
                     onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
                     onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                 >
-                    <MessageSquare size={28} />
+                    <MessageSquare size={isMobile ? 24 : 28} />
                 </button>
             )}
 
@@ -758,7 +881,12 @@ const ChatDialog = ({
                         initial={{ opacity: 0, y: 20, scale: 0.9 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.9 }}
-                        style={{ position: 'fixed', bottom: '100px', right: '24px', zIndex: 101 }}
+                        style={{ 
+                            position: 'fixed', 
+                            bottom: isMobile ? '70px' : isTabletPortrait ? '70px' : isTabletLandscape ? '60px' : '80px', 
+                            right: isMobile ? '10px' : isTabletPortrait ? '10px' : '20px', 
+                            zIndex: 101 
+                        }}
                     >
                         {chatContent}
                     </motion.div>
