@@ -1,4 +1,5 @@
 import re
+import time
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +8,7 @@ from contextlib import asynccontextmanager
 from .models import store, Document, Clause, Assessment, AssessmentResult
 from .ingestion import parse_document
 from .rag import rag_engine
+from .logger import rag_logger
 from langchain_core.prompts import ChatPromptTemplate
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -107,16 +109,41 @@ async def upload_file(
         )
     
     print(f"DEBUG: Uploading {file.filename} as {file_type} to session {session_id}")
-    content = await file.read()
-    doc_id = parse_document(content, file.filename, file_type, version, namespace=namespace, session_id=session_id)
     
-    # Save the file to physical storage
-    file_path = os.path.join(STORAGE_DIR, f"{doc_id}_{file.filename}")
-    with open(file_path, "wb") as f:
-        f.write(content)
+    try:
+        content = await file.read()
+        doc_id = parse_document(content, file.filename, file_type, version, namespace=namespace, session_id=session_id)
         
-    print(f"DEBUG: Uploaded {file.filename}, doc_id: {doc_id} in session {session_id}")
-    return {"doc_id": doc_id, "filename": file.filename}
+        # Save the file to physical storage
+        file_path = os.path.join(STORAGE_DIR, f"{doc_id}_{file.filename}")
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        # Get the number of clauses for logging
+        doc = store.get_document(session_id, doc_id)
+        num_clauses = len(store.get_clauses_by_document(session_id, doc_id)) if doc else 0
+        
+        # Log successful document ingestion
+        rag_logger.log_document_ingestion(
+            session_id=session_id,
+            filename=file.filename,
+            num_clauses=num_clauses,
+            success=True
+        )
+        
+        print(f"DEBUG: Uploaded {file.filename}, doc_id: {doc_id} in session {session_id}")
+        return {"doc_id": doc_id, "filename": file.filename}
+        
+    except Exception as e:
+        # Log failed document ingestion
+        rag_logger.log_document_ingestion(
+            session_id=session_id,
+            filename=file.filename,
+            num_clauses=0,
+            success=False,
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
 
 @app.post("/upload-session")
 async def upload_session_file(
@@ -139,27 +166,62 @@ async def upload_session_file(
         )
     
     print(f"DEBUG: Uploading session file {file.filename} to session {session_id}")
-    content = await file.read()
     
-    # Parse document with session-specific namespace
-    doc_id = parse_document(
-        content, 
-        file.filename, 
-        file_type, 
-        version, 
-        namespace=f"session_{session_id}", 
-        session_id=session_id
-    )
-    
-    # Note: We don't save session files to permanent storage
-    # They exist only in memory/vector store for the session duration
-    
-    print(f"DEBUG: Session file {file.filename} processed, doc_id: {doc_id}")
-    return {
-        "doc_id": doc_id, 
-        "filename": file.filename,
-        "message": "File uploaded for this session only. It will be automatically removed after 15 minutes of inactivity."
-    }
+    try:
+        content = await file.read()
+        
+        # Parse document with session-specific namespace
+        doc_id = parse_document(
+            content, 
+            file.filename, 
+            file_type, 
+            version, 
+            namespace=f"session_{session_id}", 
+            session_id=session_id
+        )
+        
+        # Get the number of clauses for logging
+        doc = store.get_document(session_id, doc_id)
+        num_clauses = len(store.get_clauses_by_document(session_id, doc_id)) if doc else 0
+        
+        # Log successful session document ingestion
+        rag_logger.log_document_ingestion(
+            session_id=session_id,
+            filename=file.filename,
+            num_clauses=num_clauses,
+            success=True
+        )
+        
+        # Also log as a system event to track session uploads specifically
+        rag_logger.log_system_event(
+            "SESSION_DOCUMENT_UPLOAD",
+            f"Session-only document uploaded: {file.filename}",
+            session_id=session_id,
+            filename=file.filename,
+            doc_id=doc_id,
+            num_clauses=num_clauses
+        )
+        
+        # Note: We don't save session files to permanent storage
+        # They exist only in memory/vector store for the session duration
+        
+        print(f"DEBUG: Session file {file.filename} processed, doc_id: {doc_id}")
+        return {
+            "doc_id": doc_id, 
+            "filename": file.filename,
+            "message": "File uploaded for this session only. It will be automatically removed after 15 minutes of inactivity."
+        }
+        
+    except Exception as e:
+        # Log failed session document ingestion
+        rag_logger.log_document_ingestion(
+            session_id=session_id,
+            filename=file.filename,
+            num_clauses=0,
+            success=False,
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to process session document: {str(e)}")
 
 @app.get("/documents/{doc_id}/download")
 def download_document(doc_id: int, session_id: str = Depends(get_sid)):
@@ -235,67 +297,119 @@ async def assess_compliance(
     use_kb: bool = Form(False),
     session_id: str = Depends(get_sid)
 ):
+    start_time = time.time()
     print(f"DEBUG: Assessing compliance for session {session_id}. Customer Doc: {customer_doc_id}, Reg Doc: {regulation_doc_id}")
-    customer_clauses = store.get_clauses_by_document(session_id, customer_doc_id)
-    print(f"DEBUG: Found {len(customer_clauses)} clauses in customer doc")
     
-    if not customer_clauses:
-        print(f"DEBUG: FAILURE - No clauses for customer doc {customer_doc_id}")
-        raise HTTPException(status_code=400, detail="No clauses found in customer document")
-    
-    assessment = store.add_assessment(
-        session_id=session_id,
-        customer_doc_id=customer_doc_id, 
-        regulation_doc_id=regulation_doc_id
-    )
-    
-    import asyncio
-    semaphore = asyncio.Semaphore(10)
-    
-    async def process_clause(c_clause):
-        async with semaphore:
-            # Retrieve similar regulation clauses
-            similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id, use_kb=use_kb, session_id=session_id)
-            
-            if not similar_docs:
-                return None
-                
-            best_match_doc, score = similar_docs[0]
-            reg_clause_id_val = best_match_doc.metadata['clause_id']
-            reg_clause = store.get_clause_by_doc_and_clause_id(session_id, regulation_doc_id, reg_clause_id_val)
-            
-            if not reg_clause:
-                return None
-                
-            # Run LLM Analysis
-            analysis = await rag_engine.analyze_compliance(c_clause.text, reg_clause.text)
-            
-            # Defensive logging
-            if not isinstance(analysis, dict) or 'status' not in analysis:
-                print(f"DEBUG: CRITICAL ERROR - Analysis returned invalid object: {analysis}")
-            
-            try:
-                return store.add_result(
-                    session_id=session_id,
-                    assessment_id=assessment.id,
-                    customer_clause_id=c_clause.id,
-                    regulation_clause_id=reg_clause.id,
-                    status=analysis.get('status', 'UNKNOWN'),
-                    risk=analysis.get('risk', 'HIGH'),
-                    reasoning=analysis.get('reasoning', 'Analysis failed'),
-                    evidence_text=analysis.get('evidence_text', 'N/A'),
-                    confidence=analysis.get('confidence', 0.0)
-                )
-            except Exception as e:
-                print(f"DEBUG: Error adding result to store: {e}")
-                print(f"DEBUG: Analysis was: {analysis}")
-                return None
-
-    # Process all clauses in parallel with concurrency limit
-    results_raw = await asyncio.gather(*[process_clause(c) for c in customer_clauses])
-    results = [r for r in results_raw if r is not None]
+    try:
+        customer_clauses = store.get_clauses_by_document(session_id, customer_doc_id)
+        print(f"DEBUG: Found {len(customer_clauses)} clauses in customer doc")
         
-    return {"assessment_id": assessment.id, "results_count": len(results)}
+        if not customer_clauses:
+            print(f"DEBUG: FAILURE - No clauses for customer doc {customer_doc_id}")
+            rag_logger.log_system_event(
+                "COMPLIANCE_ASSESSMENT_FAILED",
+                f"No clauses found in customer document {customer_doc_id}",
+                level="ERROR",
+                session_id=session_id,
+                customer_doc_id=customer_doc_id,
+                regulation_doc_id=regulation_doc_id
+            )
+            raise HTTPException(status_code=400, detail="No clauses found in customer document")
+        
+        assessment = store.add_assessment(
+            session_id=session_id,
+            customer_doc_id=customer_doc_id, 
+            regulation_doc_id=regulation_doc_id
+        )
+        
+        import asyncio
+        semaphore = asyncio.Semaphore(10)
+        
+        async def process_clause(c_clause):
+            async with semaphore:
+                # Retrieve similar regulation clauses
+                similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id, use_kb=use_kb, session_id=session_id)
+                
+                if not similar_docs:
+                    return None
+                    
+                best_match_doc, score = similar_docs[0]
+                reg_clause_id_val = best_match_doc.metadata['clause_id']
+                reg_clause = store.get_clause_by_doc_and_clause_id(session_id, regulation_doc_id, reg_clause_id_val)
+                
+                if not reg_clause:
+                    return None
+                    
+                # Run LLM Analysis
+                analysis = await rag_engine.analyze_compliance(c_clause.text, reg_clause.text)
+                
+                # Defensive logging
+                if not isinstance(analysis, dict) or 'status' not in analysis:
+                    print(f"DEBUG: CRITICAL ERROR - Analysis returned invalid object: {analysis}")
+                
+                try:
+                    return store.add_result(
+                        session_id=session_id,
+                        assessment_id=assessment.id,
+                        customer_clause_id=c_clause.id,
+                        regulation_clause_id=reg_clause.id,
+                        status=analysis.get('status', 'UNKNOWN'),
+                        risk=analysis.get('risk', 'HIGH'),
+                        reasoning=analysis.get('reasoning', 'Analysis failed'),
+                        evidence_text=analysis.get('evidence_text', 'N/A'),
+                        confidence=analysis.get('confidence', 0.0)
+                    )
+                except Exception as e:
+                    print(f"DEBUG: Error adding result to store: {e}")
+                    print(f"DEBUG: Analysis was: {analysis}")
+                    return None
+
+        # Process all clauses in parallel with concurrency limit
+        results_raw = await asyncio.gather(*[process_clause(c) for c in customer_clauses])
+        results = [r for r in results_raw if r is not None]
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        # Log successful compliance analysis
+        rag_logger.log_compliance_analysis(
+            session_id=session_id,
+            assessment_id=assessment.id,
+            num_comparisons=len(results),
+            success=True
+        )
+        
+        # Log detailed system event
+        rag_logger.log_system_event(
+            "COMPLIANCE_ASSESSMENT_COMPLETED",
+            f"Assessment {assessment.id} completed with {len(results)} comparisons",
+            session_id=session_id,
+            assessment_id=assessment.id,
+            customer_doc_id=customer_doc_id,
+            regulation_doc_id=regulation_doc_id,
+            total_customer_clauses=len(customer_clauses),
+            successful_comparisons=len(results),
+            processing_time_seconds=processing_time,
+            use_kb=use_kb
+        )
+            
+        return {"assessment_id": assessment.id, "results_count": len(results)}
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Log unexpected errors
+        rag_logger.log_system_event(
+            "COMPLIANCE_ASSESSMENT_ERROR",
+            f"Unexpected error during assessment: {str(e)}",
+            level="ERROR",
+            session_id=session_id,
+            customer_doc_id=customer_doc_id,
+            regulation_doc_id=regulation_doc_id,
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=f"Assessment failed: {str(e)}")
 
 @app.get("/debug/vector-store")
 def debug_vector_store(session_id: str = Depends(get_sid)):
@@ -327,6 +441,7 @@ async def chat_with_docs(
     Chat with documents combining BOTH session-uploaded files AND knowledge base.
     When a file is uploaded, ALWAYS search both sources to provide comprehensive answers.
     """
+    start_time = time.time()
     print(f"DEBUG: Chat query='{query}', use_kb={use_kb}, has_session_file={has_session_file}, session={session_id}")
     
     # Parse conversation history
@@ -343,10 +458,42 @@ async def chat_with_docs(
         try:
             chain = _GREETING_PROMPT | rag_engine.llm
             greeting_response = chain.invoke({"query": query})
-            return {"answer": greeting_response.content.strip(), "sources": []}
+            answer = greeting_response.content.strip()
+            response = {"answer": answer, "sources": []}
+            
+            # Log the interaction
+            response_time = time.time() - start_time
+            rag_logger.log_chat_interaction(
+                session_id=session_id,
+                question=query,
+                answer=answer,
+                sources=[],
+                response_time=response_time,
+                use_kb=use_kb,
+                has_session_file=has_session_file.lower() == "true",
+                metadata={"interaction_type": "greeting"}
+            )
+            
+            return response
         except Exception as e:
             print(f"DEBUG: Greeting LLM call failed: {e}")
-            return {"answer": "Hello! How can I help you today?", "sources": []}
+            answer = "Hello! How can I help you today?"
+            response = {"answer": answer, "sources": []}
+            
+            # Log the fallback interaction
+            response_time = time.time() - start_time
+            rag_logger.log_chat_interaction(
+                session_id=session_id,
+                question=query,
+                answer=answer,
+                sources=[],
+                response_time=response_time,
+                use_kb=use_kb,
+                has_session_file=has_session_file.lower() == "true",
+                metadata={"interaction_type": "greeting_fallback", "error": str(e)}
+            )
+            
+            return response
     # ────────────────────────────────────────────────────────────────
 
     search_session = has_session_file.lower() == "true"
@@ -395,11 +542,28 @@ async def chat_with_docs(
     
     if not all_results:
         if search_session:
-            return {"answer": "I couldn't find any relevant information in your uploaded document or the knowledge base. Please check if your document contains relevant content or try rephrasing your question."}
+            answer = "I couldn't find any relevant information in your uploaded document or the knowledge base. Please check if your document contains relevant content or try rephrasing your question."
         elif use_knowledge_base:
-            return {"answer": "I couldn't find any relevant information in the knowledge base. Please try a different question or upload a document."}
+            answer = "I couldn't find any relevant information in the knowledge base. Please try a different question or upload a document."
         else:
-            return {"answer": "Please upload a document or enable knowledge base search to get answers."}
+            answer = "Please upload a document or enable knowledge base search to get answers."
+        
+        response = {"answer": answer}
+        
+        # Log the no-results interaction
+        response_time = time.time() - start_time
+        rag_logger.log_chat_interaction(
+            session_id=session_id,
+            question=query,
+            answer=answer,
+            sources=[],
+            response_time=response_time,
+            use_kb=use_knowledge_base,
+            has_session_file=search_session,
+            metadata={"interaction_type": "no_results", "search_attempted": True}
+        )
+        
+        return response
     
     # Sort all results by relevance score (higher is better) and take top 6
     all_results.sort(key=lambda x: x[1], reverse=True)
@@ -474,6 +638,27 @@ async def chat_with_docs(
         answer = str(result)
         sources = sources_metadata
     
+    # Calculate response time
+    response_time = time.time() - start_time
+    
+    # Log the successful interaction
+    rag_logger.log_chat_interaction(
+        session_id=session_id,
+        question=query,
+        answer=answer,
+        sources=sources,
+        response_time=response_time,
+        use_kb=use_knowledge_base,
+        has_session_file=search_session,
+        metadata={
+            "interaction_type": "successful_query",
+            "context_description": context_description,
+            "session_references": session_refs,
+            "kb_references": kb_refs,
+            "total_references": len(top_results)
+        }
+    )
+
     return {"answer": answer, "sources": sources}
 
 @app.get("/graph/{assessment_id}")
@@ -577,6 +762,100 @@ def generate_report(assessment_id: int, session_id: str = Depends(get_sid)):
     return StreamingResponse(buffer, media_type="application/pdf", headers={
         "Content-Disposition": f"attachment; filename=compliance_report_{assessment_id}.pdf"
     })
+
+# ── Logging Endpoints ────────────────────────────────────────────────────
+
+@app.get("/logs/chat")
+def get_chat_logs(
+    session_id: str = Depends(get_sid),
+    limit: int = 50,
+    all_sessions: bool = False
+):
+    """Get chat history logs for a session or all sessions."""
+    if all_sessions:
+        # Return all logs (both chat and system events) from all sessions
+        logs = rag_logger.get_all_logs(limit=limit)
+        # Filter only chat interactions for this endpoint
+        chat_logs = [log for log in logs if log.get('type') == 'chat_interaction']
+    else:
+        # Return logs only for current session
+        chat_logs = rag_logger.get_chat_history(session_id=session_id, limit=limit)
+    
+    return {
+        "session_id": session_id if not all_sessions else "all",
+        "total_logs": len(chat_logs),
+        "logs": chat_logs
+    }
+
+@app.get("/logs/stats")
+def get_session_stats(session_id: str = Depends(get_sid)):
+    """Get statistics for the current session."""
+    stats = rag_logger.get_session_stats(session_id)
+    return stats
+
+@app.get("/logs/export")
+def export_chat_logs(
+    session_id: str = Depends(get_sid),
+    format: str = "json"  # json or csv
+):
+    """Export chat logs in different formats."""
+    logs = rag_logger.get_chat_history(session_id=session_id)
+    
+    if format.lower() == "csv":
+        import csv
+        import io
+        
+        output = io.StringIO()
+        if logs:
+            fieldnames = ['timestamp', 'session_id', 'question', 'answer', 'sources_count', 'response_time']
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for log in logs:
+                writer.writerow({
+                    'timestamp': log['timestamp'],
+                    'session_id': log['session_id'],
+                    'question': log['question'][:100] + '...' if len(log['question']) > 100 else log['question'],
+                    'answer': log['answer'][:200] + '...' if len(log['answer']) > 200 else log['answer'],
+                    'sources_count': len(log.get('sources', [])),
+                    'response_time': log.get('metadata', {}).get('response_time_seconds', 0)
+                })
+        
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode()),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=chat_logs_{session_id}.csv"}
+        )
+    
+    else:  # JSON format
+        return {
+            "session_id": session_id,
+            "exported_at": datetime.now().isoformat(),
+            "total_logs": len(logs),
+            "logs": logs
+        }
+
+@app.post("/logs/cleanup")
+def cleanup_old_logs(days_to_keep: int = 30):
+    """Clean up old log entries (this now just triggers rotation check since we use entry-based rotation)."""
+    try:
+        rag_logger.cleanup_old_logs(days_to_keep)
+        return {"message": f"Log rotation check completed. System maintains maximum {rag_logger.max_entries} entries automatically."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup logs: {str(e)}")
+
+@app.get("/logs/system")
+def get_system_logs(limit: int = 50):
+    """Get all system logs (both chat and system events)."""
+    all_logs = rag_logger.get_all_logs(limit=limit)
+    return {
+        "total_logs": len(all_logs),
+        "max_entries": rag_logger.max_entries,
+        "logs": all_logs
+    }
+
+# ──────────────────────────────────────────────────────────────────────────
 
 # Mount the frontend static files
 # Make sure to build the frontend first: npm run build
