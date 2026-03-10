@@ -90,7 +90,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.xlsx'}
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.xlsx', '.csv'}
 
 @app.post("/upload")
 async def upload_file(

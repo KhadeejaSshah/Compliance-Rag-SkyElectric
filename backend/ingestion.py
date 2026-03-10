@@ -2,6 +2,8 @@ from pypdf import PdfReader
 from io import BytesIO
 from typing import List, Dict
 import re
+import csv
+import math
 from .models import store
 from .rag import rag_engine
 
@@ -144,6 +146,350 @@ def parse_docx(file_content: bytes, filename: str) -> List[Dict]:
     return clauses
 
 
+def parse_csv(file_content: bytes, filename: str) -> List[Dict]:
+    """Parse Yokogawa DL850EV ScopeCorder CSV export and extract measurement summaries."""
+    text = file_content.decode('utf-8', errors='replace')
+    lines = text.splitlines()
+    
+    # --- Parse the 15-row header ---
+    header = {}
+    header_size = 15  # default
+    for line in lines[:1]:
+        parts = line.split(',')
+        if parts and 'Header Size' in parts[0]:
+            try:
+                header_size = int(parts[1].strip())
+            except (ValueError, IndexError):
+                pass
+    
+    def parse_header_row(line):
+        reader_obj = csv.reader([line])
+        row = next(reader_obj)
+        key = row[0].strip().strip('"').strip()
+        values = [v.strip().strip('"').strip() for v in row[1:] if v.strip()]
+        return key, values
+    
+    for line in lines[:header_size]:
+        key, values = parse_header_row(line)
+        if key:
+            header[key] = values
+    
+    model_name = header.get('Model Name', ['Unknown'])[0]
+    trace_names = header.get('TraceName', [])
+    v_units = header.get('VUnit', [])
+    sample_rate_str = header.get('SampleRate', ['0'])[0]
+    h_resolution_str = header.get('HResolution', ['0'])[0]
+    date_val = header.get('Date', ['Unknown'])[0]
+    time_val = header.get('Time', ['Unknown'])[0]
+    block_sizes = header.get('BlockSize', [])
+    
+    # Calculate actual sample rate from HResolution if available (more reliable)
+    try:
+        h_res = float(h_resolution_str)
+        sample_rate_val = 1.0 / h_res if h_res > 0 else float(sample_rate_str)
+    except (ValueError, ZeroDivisionError):
+        try:
+            sample_rate_val = float(sample_rate_str)
+        except ValueError:
+            sample_rate_val = 100000.0 # Default
+    
+    num_channels = len(trace_names)
+    if num_channels == 0:
+        raise ValueError("CSV does not appear to be a Yokogawa DL850EV export (no TraceName found in header).")
+    
+    # --- Read numeric data ---
+    # Data starts after header_size rows (plus one blank line)
+    data_start = header_size + 1  # skip blank line after header
+    channels = [[] for _ in range(num_channels)]
+    
+    for line in lines[data_start:]:
+        line = line.strip()
+        if not line:
+            continue
+        # Each data line starts with empty column, then channel values, trailing comma
+        parts = line.split(',')
+        # Skip the first empty element
+        values = [p.strip() for p in parts[1:] if p.strip()]
+        for ch_idx in range(min(num_channels, len(values))):
+            try:
+                channels[ch_idx].append(float(values[ch_idx]))
+            except (ValueError, IndexError):
+                pass
+    
+    # --- Compute per-channel statistics ---
+    def calc_stats(data):
+        if not data:
+            return None
+        n = len(data)
+        mean = sum(data) / n
+        sq_sum = sum(x * x for x in data)
+        rms = math.sqrt(sq_sum / n)
+        variance = sum((x - mean) ** 2 for x in data) / n
+        std = math.sqrt(variance)
+        return {
+            'min': min(data),
+            'max': max(data),
+            'mean': mean,
+            'rms': rms,
+            'std': std,
+            'peak_to_peak': max(data) - min(data),
+            'samples': n
+        }
+    
+    def count_zero_crossings_robust(data, hysteresis):
+        """Count zero crossings using hysteresis to avoid noise-induced errors."""
+        crossings = 0
+        if not data: return 0
+        
+        # Determine initial state
+        # state: 1 for positive, -1 for negative
+        state = 1 if data[0] >= 0 else -1
+        
+        for val in data:
+            if state == 1 and val < -hysteresis:
+                state = -1
+                crossings += 1
+            elif state == -1 and val > hysteresis:
+                state = 1
+                crossings += 1
+        return crossings
+
+    def analyze_voltage_events(data, sample_rate, nominal_rms):
+        """Detect voltage dips/sags and their duration."""
+        if not data or sample_rate <= 0 or nominal_rms <= 0:
+            return None
+            
+        # Use 10ms window (half cycle @ 50Hz) for RMS tracking
+        window_size = int(0.01 * sample_rate) 
+        if window_size < 1: window_size = 1
+        
+        event_threshold = 0.9 * nominal_rms # 90% threshold for sag
+        recovery_threshold = 0.95 * nominal_rms # 95% for recovery
+        
+        events = []
+        current_event_start = None
+        min_v_in_event = nominal_rms
+        
+        # Simple moving RMS
+        sq_sum = sum(x*x for x in data[:window_size])
+        for i in range(0, len(data) - window_size, window_size):
+            # Recalculate local RMS for this chunk
+            chunk = data[i:i+window_size]
+            local_rms = math.sqrt(sum(x*x for x in chunk) / len(chunk))
+            
+            if current_event_start is None:
+                if local_rms < event_threshold:
+                    current_event_start = i / sample_rate
+                    min_v_in_event = local_rms
+            else:
+                min_v_in_event = min(min_v_in_event, local_rms)
+                if local_rms > recovery_threshold:
+                    duration = (i / sample_rate) - current_event_start
+                    events.append({
+                        'start_time': current_event_start,
+                        'duration': duration,
+                        'min_rms': min_v_in_event,
+                        'depth_percent': (1.0 - min_v_in_event/nominal_rms) * 100
+                    })
+                    current_event_start = None
+                    min_v_in_event = nominal_rms
+                    
+        # Handle ongoing event at end of file
+        if current_event_start is not None:
+             duration = (len(data) / sample_rate) - current_event_start
+             events.append({
+                'start_time': current_event_start,
+                'duration': duration,
+                'min_rms': min_v_in_event,
+                'depth_percent': (1.0 - min_v_in_event/nominal_rms) * 100,
+                'is_ongoing': True
+             })
+             
+        return events
+
+    clauses = []
+    
+    # Clause 1: Instrument metadata
+    sample_rate_str = f"{sample_rate_val/1000:.1f} kHz" if sample_rate_val >= 1000 else f"{sample_rate_val:.1f} Hz"
+    channel_list = ', '.join([f"{trace_names[i]} ({v_units[i] if i < len(v_units) else '?'})" for i in range(num_channels)])
+    total_samples = int(block_sizes[0]) if block_sizes else (len(channels[0]) if channels[0] else 0)
+    duration = total_samples / sample_rate_val if sample_rate_val > 0 else 0
+    
+    metadata_text = (
+        f"Oscilloscope Measurement Data from {model_name}. "
+        f"Date: {date_val}, Time: {time_val}. "
+        f"Sample Rate: {sample_rate_str}. "
+        f"Total Samples per Channel: {total_samples}. "
+        f"Recording Duration: {duration:.3f} seconds. "
+        f"Channels ({num_channels}): {channel_list}."
+    )
+    clauses.append({
+        "clause_id": "CSV-META",
+        "text": metadata_text,
+        "page_number": 1,
+        "severity": "INFO"
+    })
+    
+    # Channels stats
+    channel_stats = {}
+    for ch_idx in range(num_channels):
+        stats = calc_stats(channels[ch_idx])
+        if stats is None:
+            continue
+        name = trace_names[ch_idx] if ch_idx < len(trace_names) else f"CH{ch_idx}"
+        unit = v_units[ch_idx] if ch_idx < len(v_units) else '?'
+        channel_stats[name] = {'stats': stats, 'unit': unit, 'data': channels[ch_idx]}
+        
+        ch_text = (
+            f"Channel '{name}' Summary: "
+            f"Unit={unit}, Min={stats['min']:.3f}, Max={stats['max']:.3f}, "
+            f"Mean={stats['mean']:.3f}, RMS={stats['rms']:.3f}, "
+            f"Peak-to-Peak={stats['peak_to_peak']:.3f}."
+        )
+        clauses.append({
+            "clause_id": f"CSV-CH-{name}",
+            "text": ch_text,
+            "page_number": 1,
+            "severity": "INFO"
+        })
+    
+    # Waveform Analysis (Robust Frequency & Nominal Detection)
+    waveform_texts = []
+    detected_nominal_freq = 0
+    detected_nominal_volt = 0
+    
+    for volt_ch in ['U-Volt', 'V-Volt']:
+        if volt_ch in channel_stats:
+            data = channel_stats[volt_ch]['data']
+            rms = channel_stats[volt_ch]['stats']['rms']
+            hysteresis = 0.05 * rms if rms > 1 else 0.5
+            crossings = count_zero_crossings_robust(data, hysteresis)
+            
+            if sample_rate_val > 0 and len(data) > 0:
+                duration_s = len(data) / sample_rate_val
+                freq = crossings / (2.0 * duration_s)
+                crest_factor = abs(channel_stats[volt_ch]['stats']['max'] / rms) if rms != 0 else 0
+                
+                # Nominal Frequency Detection
+                if 45 < freq < 55: detected_nominal_freq = 50
+                elif 55 < freq < 65: detected_nominal_freq = 60
+                
+                # Nominal Voltage Detection (RMS)
+                if detected_nominal_volt == 0:
+                    if 90 < rms < 110: detected_nominal_volt = 100
+                    elif 190 < rms < 220: detected_nominal_volt = 200
+                    elif 220 < rms < 245: detected_nominal_volt = 230
+                
+                waveform_texts.append(
+                    f"{volt_ch}: Frequency={freq:.2f} Hz, "
+                    f"RMS={rms:.2f} V, Crest Factor={crest_factor:.3f}"
+                )
+    
+    if waveform_texts:
+        nom_text = f" (Detected Nominal: {detected_nominal_freq}Hz, {detected_nominal_volt}V)" if detected_nominal_freq else ""
+        clauses.append({
+            "clause_id": "CSV-WAVEFORM",
+            "text": f"Grid-Interactive Waveform Analysis{nom_text}: {'; '.join(waveform_texts)}.",
+            "page_number": 1,
+            "severity": "INFO"
+        })
+
+    # Power Analysis (Internal to events)
+    all_power_data = {}
+    for volt_ch, cur_ch, phase_label in [('U-Volt', 'U-Cur', 'U-Phase'), ('V-Volt', 'V-Cur', 'V-Phase')]:
+        if volt_ch in channel_stats and cur_ch in channel_stats:
+            v_data = channel_stats[volt_ch]['data']
+            i_data = channel_stats[cur_ch]['data']
+            n = min(len(v_data), len(i_data))
+            if n > 0:
+                all_power_data[phase_label] = [v_data[j] * i_data[j] for j in range(n)]
+
+    # Voltage & Power Recovery Event Analysis (JETT-Specific)
+    event_texts = []
+    nom_v = detected_nominal_volt if detected_nominal_volt > 0 else 100 # Default to 100V for Japan if unsure
+    
+    for volt_ch in ['U-Volt', 'V-Volt']:
+        if volt_ch in channel_stats:
+            data = channel_stats[volt_ch]['data']
+            stats = channel_stats[volt_ch]['stats']
+            
+            # Detect dips using either detected nominal or the channel's own mean
+            ref_v = nom_v if (0.8 * nom_v < stats['rms'] < 1.2 * nom_v) else stats['rms']
+            events = analyze_voltage_events(data, sample_rate_val, ref_v)
+            
+            if events:
+                for e in events:
+                    # Power Recovery Check (JETT Requirement)
+                    phase_label = 'U-Phase' if 'U' in volt_ch else 'V-Phase'
+                    recovery_note = ""
+                    if phase_label in all_power_data:
+                        p_data = all_power_data[phase_label]
+                        # Calc pre-dip power average (10ms before)
+                        pre_idx = max(0, int(e['start_time'] * sample_rate_val) - int(0.01 * sample_rate_val))
+                        pre_p_avg = sum(p_data[pre_idx:int(e['start_time'] * sample_rate_val)]) / (int(0.01 * sample_rate_val) or 1)
+                        
+                        # Find when power recovers to 80% after voltage recovery
+                        recovery_start_idx = int((e['start_time'] + e['duration']) * sample_rate_val)
+                        p_recovery_time = -1
+                        threshold_p = 0.8 * pre_p_avg
+                        
+                        for k in range(recovery_start_idx, len(p_data)):
+                            if p_data[k] >= threshold_p:
+                                p_recovery_time = (k - recovery_start_idx) / sample_rate_val
+                                break
+                        
+                        if p_recovery_time >= 0:
+                            recovery_note = f" (Power recovered to 80% in {p_recovery_time:.3f}s)"
+                        else:
+                            recovery_note = f" (Power did NOT recover to 80% within the recording)"
+
+                    event_texts.append(
+                        f"Voltage Sag on {volt_ch}: Start={e['start_time']:.3f}s, Duration={e['duration']:.3f}s, "
+                        f"Residual Voltage={e['min_rms']:.1f}V ({100-e['depth_percent']:.1f}% of nominal){recovery_note}."
+                    )
+            else:
+                event_texts.append(
+                    f"No Voltage Sags (>10% drop) detected on {volt_ch}. "
+                    f"Stability: Min={stats['min']:.1f}V, Max={stats['max']:.1f}V, Mean={stats['rms']:.1f}V."
+                )
+                    
+    if event_texts:
+        clauses.append({
+            "clause_id": "CSV-EVENTS",
+            "text": f"JETT Compliance - Voltage Dip & Recovery Analysis: {'; '.join(event_texts)}.",
+            "page_number": 1,
+            "severity": "INFO"
+        })
+
+    # Summary Power Analysis
+    power_summary = []
+    for phase_label, p_data in all_power_data.items():
+        p_avg = sum(p_data) / len(p_data)
+        p_max = max(p_data)
+        power_summary.append(f"{phase_label}: Avg Power={p_avg:.1f}W, Peak={p_max:.1f}W")
+    
+    if power_summary:
+        clauses.append({
+            "clause_id": "CSV-POWER",
+            "text": f"Power Output Summary: {', '.join(power_summary)}.",
+            "page_number": 1,
+            "severity": "INFO"
+        })
+    
+    # Protection signals
+    if 'GB' in channel_stats and 'Relay' in channel_stats:
+        gb_s = channel_stats['GB']['stats']
+        relay_s = channel_stats['Relay']['stats']
+        clauses.append({
+            "clause_id": "CSV-PROTECTION",
+            "text": f"Protection Signals Status: GB Mean={gb_s['mean']:.4f}V (Max={gb_s['max']:.4f}V), Relay Mean={relay_s['mean']:.4f}V (Max={relay_s['max']:.4f}V).",
+            "page_number": 1,
+            "severity": "INFO"
+        })
+    
+    return clauses
+
+
 def parse_document(file_content: bytes, filename: str, file_type: str, version: str = "1.0", namespace: str = None, session_id: str = None) -> int:
     """
     Parse a document (PDF, DOCX, or XLSX) and store in memory.
@@ -158,6 +504,8 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
         clauses = parse_docx(file_content, filename)
     elif filename_lower.endswith('.xlsx'):
         clauses = parse_xlsx(file_content, filename)
+    elif filename_lower.endswith('.csv'):
+        clauses = parse_csv(file_content, filename)
     else:
         raise ValueError(f"Unsupported file type: {filename}")
     
