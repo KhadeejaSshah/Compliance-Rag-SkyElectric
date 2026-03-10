@@ -149,19 +149,24 @@ def parse_docx(file_content: bytes, filename: str) -> List[Dict]:
 
 def parse_csv(file_content: bytes, filename: str) -> List[Dict]:
     """Router for CSV parsing. Detects if it's a Yokogawa instrument CSV or generic."""
+    print(f"DEBUG: Entering parse_csv for filename: {filename}")
     text = file_content.decode('utf-8', errors='replace')
     lines = text.splitlines()
     
     # Simple detection: Look for Yokogawa-specific header keys in the first few lines
     is_yokogawa = False
-    for line in lines[:5]:
-        if any(key in line for key in ['"Header Size"', '"Model Name"', '"TraceName"']):
+    print(f"DEBUG: Detecting CSV type. Checking first 5 lines of {filename}")
+    for i, line in enumerate(lines[:5]):
+        print(f"DEBUG: Line {i}: {line[:100]}")
+        if any(key in line for key in ['"Header Size"', '"Model Name"', '"TraceName"', 'Header Size', 'Model Name']):
             is_yokogawa = True
             break
             
     if is_yokogawa:
+        print(f"DEBUG: {filename} detected as YOKOGAWA format")
         return parse_yokogawa_csv(file_content, filename)
     else:
+        print(f"DEBUG: {filename} detected as GENERIC format")
         return parse_csv_generic(file_content, filename)
 
 
@@ -204,19 +209,24 @@ def parse_csv_generic(file_content: bytes, filename: str) -> List[Dict]:
 
 def parse_yokogawa_csv(file_content: bytes, filename: str) -> List[Dict]:
     """Parse Yokogawa DL850EV ScopeCorder CSV export and extract measurement summaries."""
+    print(f"DEBUG: Starting parse_yokogawa_csv for {filename}")
     text = file_content.decode('utf-8', errors='replace')
     lines = text.splitlines()
     
     # --- Parse the 15-row header ---
     header = {}
     header_size = 15  # default
-    for line in lines[:1]:
-        parts = line.split(',')
-        if parts and 'Header Size' in parts[0]:
-            try:
-                header_size = int(parts[1].strip())
-            except (ValueError, IndexError):
-                pass
+    try:
+        for line in lines[:1]:
+            parts = line.split(',')
+            if parts and 'Header Size' in parts[0]:
+                try:
+                    header_size = int(parts[1].strip())
+                    print(f"DEBUG: Detected header size: {header_size}")
+                except (ValueError, IndexError):
+                    pass
+    except Exception as e:
+        print(f"DEBUG: Error reading Header Size row: {e}")
     
     def parse_header_row(line):
         reader_obj = csv.reader([line])
@@ -225,10 +235,14 @@ def parse_yokogawa_csv(file_content: bytes, filename: str) -> List[Dict]:
         values = [v.strip().strip('"').strip() for v in row[1:] if v.strip()]
         return key, values
     
+    print(f"DEBUG: Parsing {header_size} header rows...")
     for line in lines[:header_size]:
-        key, values = parse_header_row(line)
-        if key:
-            header[key] = values
+        try:
+            key, values = parse_header_row(line)
+            if key:
+                header[key] = values
+        except Exception as e:
+            print(f"DEBUG: Error parsing header row '{line[:50]}': {e}")
     
     model_name = header.get('Model Name', ['Unknown'])[0]
     trace_names = header.get('TraceName', [])
@@ -239,10 +253,13 @@ def parse_yokogawa_csv(file_content: bytes, filename: str) -> List[Dict]:
     time_val = header.get('Time', ['Unknown'])[0]
     block_sizes = header.get('BlockSize', [])
     
+    print(f"DEBUG: Header parsed. Model: {model_name}, Traces: {trace_names}")
+    
     # Calculate actual sample rate from HResolution if available (more reliable)
     try:
         h_res = float(h_resolution_str)
         sample_rate_val = 1.0 / h_res if h_res > 0 else float(sample_rate_str)
+        print(f"DEBUG: Sample rate calculated: {sample_rate_val} Hz")
     except (ValueError, ZeroDivisionError):
         try:
             sample_rate_val = float(sample_rate_str)
@@ -251,26 +268,29 @@ def parse_yokogawa_csv(file_content: bytes, filename: str) -> List[Dict]:
     
     num_channels = len(trace_names)
     if num_channels == 0:
+        print(f"DEBUG: ERROR - No TraceName found in header for {filename}")
         raise ValueError("CSV does not appear to be a Yokogawa DL850EV export (no TraceName found in header).")
     
     # --- Read numeric data ---
-    # Data starts after header_size rows (plus one blank line)
-    data_start = header_size + 1  # skip blank line after header
+    data_start = header_size + 1 
+    print(f"DEBUG: Starting data reading from line {data_start}...")
     channels = [[] for _ in range(num_channels)]
     
+    row_count = 0
     for line in lines[data_start:]:
         line = line.strip()
         if not line:
             continue
-        # Each data line starts with empty column, then channel values, trailing comma
         parts = line.split(',')
-        # Skip the first empty element
         values = [p.strip() for p in parts[1:] if p.strip()]
         for ch_idx in range(min(num_channels, len(values))):
             try:
                 channels[ch_idx].append(float(values[ch_idx]))
             except (ValueError, IndexError):
                 pass
+        row_count += 1
+    
+    print(f"DEBUG: Read {row_count} data rows. Starting analysis...")
     
     # --- Compute per-channel statistics ---
     def calc_stats(data):
