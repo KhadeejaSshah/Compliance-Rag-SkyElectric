@@ -4,6 +4,7 @@ from typing import List, Dict
 import re
 import csv
 import math
+import io
 from .models import store
 from .rag import rag_engine
 
@@ -147,6 +148,61 @@ def parse_docx(file_content: bytes, filename: str) -> List[Dict]:
 
 
 def parse_csv(file_content: bytes, filename: str) -> List[Dict]:
+    """Router for CSV parsing. Detects if it's a Yokogawa instrument CSV or generic."""
+    text = file_content.decode('utf-8', errors='replace')
+    lines = text.splitlines()
+    
+    # Simple detection: Look for Yokogawa-specific header keys in the first few lines
+    is_yokogawa = False
+    for line in lines[:5]:
+        if any(key in line for key in ['"Header Size"', '"Model Name"', '"TraceName"']):
+            is_yokogawa = True
+            break
+            
+    if is_yokogawa:
+        return parse_yokogawa_csv(file_content, filename)
+    else:
+        return parse_csv_generic(file_content, filename)
+
+
+def parse_csv_generic(file_content: bytes, filename: str) -> List[Dict]:
+    """Parse a standard tabular CSV and extract each row as a clause."""
+    text = file_content.decode('utf-8', errors='replace')
+    f = io.StringIO(text)
+    reader = csv.reader(f)
+    
+    clauses = []
+    rows = list(reader)
+    if not rows:
+        return []
+        
+    # Assume first row is header
+    headers = [h.strip() for h in rows[0]]
+    
+    for row_idx, row in enumerate(rows[1:]):
+        if not any(cell.strip() for cell in row):
+            continue
+            
+        # Create a text representation: "Header1: Val1 | Header2: Val2 ..."
+        parts = []
+        for i, cell in enumerate(row):
+            h = headers[i] if i < len(headers) else f"Column{i+1}"
+            parts.append(f"{h}: {cell.strip()}")
+            
+        row_text = " | ".join(parts)
+        
+        if len(row_text) > 5:
+            clauses.append({
+                "clause_id": f"CSV-R{row_idx+2}", # +2 because 1-indexed and header skipped
+                "text": row_text,
+                "page_number": 1,
+                "severity": "INFO"
+            })
+            
+    return clauses
+
+
+def parse_yokogawa_csv(file_content: bytes, filename: str) -> List[Dict]:
     """Parse Yokogawa DL850EV ScopeCorder CSV export and extract measurement summaries."""
     text = file_content.decode('utf-8', errors='replace')
     lines = text.splitlines()
