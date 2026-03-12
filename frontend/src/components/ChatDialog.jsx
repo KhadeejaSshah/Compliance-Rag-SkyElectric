@@ -50,6 +50,7 @@ const useWindowSize = () => {
 const ChatDialog = ({
     isFullScreen = false,
     useKb = false,
+    selectedKbIds = [],
     messages = [],
     onSendMessage,
     onNewChat
@@ -357,6 +358,7 @@ const ChatDialog = ({
             const formData = new FormData();
             formData.append('query', userInput);
             formData.append('use_kb', uploadedFile ? 'true' : (useKb ? 'true' : 'false'));
+            formData.append('kb_doc_ids', JSON.stringify(selectedKbIds));
             formData.append('has_session_file', uploadedFile ? 'true' : 'false');
 
             // Pass the history, including the latest user message.

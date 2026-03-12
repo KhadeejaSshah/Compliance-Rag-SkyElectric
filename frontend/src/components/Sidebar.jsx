@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Upload, FileText, CheckCircle, AlertTriangle, XCircle, Info, Database, Download, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ChatHistory from './ChatHistory';
+import KnowledgeBaseManager from './KnowledgeBaseManager';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
@@ -14,6 +15,8 @@ const Sidebar = ({
     assessmentId,
     mode,
     useKb,
+    selectedKbIds,
+    onSelectedKbIdsChange,
     // Chat history props
     chatHistory,
     activeChatId,
@@ -25,6 +28,7 @@ const Sidebar = ({
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [selectedDocs, setSelectedDocs] = useState([]);
+    const [isKbManagerOpen, setIsKbManagerOpen] = useState(false);
 
     // Color palette for file highlighting
     const colors = [
@@ -168,9 +172,9 @@ const Sidebar = ({
 
             console.log(`Analyzing: Standard=${firstDoc.filename}, Project=${secondDoc.filename} | KB=${useKb}`);
             const formData = new FormData();
-            formData.append('customer_doc_id', secondDoc.id);
             formData.append('regulation_doc_id', firstDoc.id);
             formData.append('use_kb', useKb);
+            formData.append('kb_doc_ids', JSON.stringify(selectedKbIds));
 
             const res = await axios.post(`${API_BASE}/assess`, formData);
             onAssessmentComplete(res.data.assessment_id);
@@ -213,6 +217,40 @@ const Sidebar = ({
                 onSelectChat={onSelectChat}
                 onNewChat={onNewChat}
                 onDeleteChat={onDeleteChat}
+            />
+
+            <section style={{ marginBottom: '24px', marginTop: '16px' }}>
+                <button
+                    onClick={() => setIsKbManagerOpen(true)}
+                    style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '10px',
+                        padding: '12px',
+                        background: '#f3f4f6',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '10px',
+                        color: '#374151',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#e5e7eb'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#f3f4f6'}
+                >
+                    <Database size={18} color="#6366f1" />
+                    Knowledge Base Manager
+                </button>
+            </section>
+
+            <KnowledgeBaseManager
+                isOpen={isKbManagerOpen}
+                onClose={() => setIsKbManagerOpen(false)}
+                selectedIds={selectedKbIds}
+                onSelectionChange={onSelectedKbIdsChange}
             />
 
             {/* <section style={{ marginBottom: '32px' }}>

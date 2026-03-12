@@ -566,6 +566,56 @@ def parse_yokogawa_csv(file_content: bytes, filename: str) -> List[Dict]:
     return clauses
 
 
+def refine_clauses(clauses: List[Dict]) -> List[Dict]:
+    """
+    Refines extracted clauses to improve AI response quality.
+    - Filters out 'noise' (tiny fragments, purely numeric strings, decorative headers).
+    - Merges sequential short fragments on the same page to provide richer context.
+    """
+    if not clauses:
+        return []
+
+    processed = []
+    buffer_clause = None
+
+    for c in clauses:
+        text = c['text'].strip()
+        
+        # 1. NOISE FILTERING
+        # Skip if extremely short (less than 25 chars)
+        if len(text) < 25:
+            continue
+            
+        # Skip if it's purely numeric/symbols (likely page numbers, version indices, or line noise)
+        # At least 25% of the string should be alphabetical to be considered 'meaningful text'
+        alpha_chars = sum(1 for char in text if char.isalpha())
+        if alpha_chars / len(text) < 0.25:
+            continue
+
+        # 2. FRAGMENT MERGING
+        # If the current clause is short, we merge it with the NEXT one to provide context
+        # We only merge if they are on the same page and within the same general section
+        if buffer_clause:
+            # Condition for merging: same page and buffer is relatively short
+            if buffer_clause['page_number'] == c['page_number'] and len(buffer_clause['text']) < 300:
+                # Merge into buffer
+                buffer_clause['text'] += " " + text
+                # Keep the original clause_id if it was a 'header-type' ID, otherwise update
+                continue
+            else:
+                # Flush the buffer
+                processed.append(buffer_clause)
+                buffer_clause = None
+
+        buffer_clause = c.copy()
+        buffer_clause['text'] = text
+
+    if buffer_clause:
+        processed.append(buffer_clause)
+
+    return processed
+
+
 def parse_document(file_content: bytes, filename: str, file_type: str, version: str = "1.0", namespace: str = None, session_id: str = None) -> int:
     """
     Parse a document (PDF, DOCX, or XLSX) and store in memory.
@@ -575,15 +625,22 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
     filename_lower = filename.lower()
     
     if filename_lower.endswith('.pdf'):
-        clauses = parse_pdf(file_content, filename)
+        raw_clauses = parse_pdf(file_content, filename)
     elif filename_lower.endswith('.docx'):
-        clauses = parse_docx(file_content, filename)
+        raw_clauses = parse_docx(file_content, filename)
     elif filename_lower.endswith('.xlsx'):
-        clauses = parse_xlsx(file_content, filename)
+        raw_clauses = parse_xlsx(file_content, filename)
     elif filename_lower.endswith('.csv'):
-        clauses = parse_csv(file_content, filename)
+        raw_clauses = parse_csv(file_content, filename)
     else:
         raise ValueError(f"Unsupported file type: {filename}")
+
+    # APPLY REFINEMENT LAYER (Global for all types)
+    # Special case: Instrument CSVs (Yokogawa) are already summarized and don't need merging
+    if filename_lower.endswith('.csv') and any(c['clause_id'].startswith('CSV-') for c in raw_clauses):
+        clauses = raw_clauses
+    else:
+        clauses = refine_clauses(raw_clauses)
     
     # Add document to in-memory store
     doc = store.add_document(session_id=session_id, filename=filename, file_type=file_type, version=version)
@@ -600,16 +657,15 @@ def parse_document(file_content: bytes, filename: str, file_type: str, version: 
             severity=c['severity']
         )
         ingest_clauses.append({
-            "status": "INGESTED", # Temporary placeholder
+            "status": "INGESTED", 
             "clause_id": c['clause_id'],
             "doc_id": doc.id,
-            "doc_name": filename,  # Include filename for chat responses
+            "doc_name": filename,
             "text": c['text'],
             "page_number": c['page_number']
         })
     
-    # Ingest all documents into Vector DB (not just regulations)
-    # This enables chatting with any uploaded document
+    # Ingest all documents into Vector DB
     if ingest_clauses:
         rag_engine.ingest_documents(ingest_clauses, session_id=session_id, namespace=namespace)
     

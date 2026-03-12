@@ -19,6 +19,7 @@ import os
 import asyncio
 import json
 from datetime import datetime, timedelta
+from typing import List, Dict, Optional
 import shutil
 
 # ── Conversational intent pattern (compiled once at module load) ────────────
@@ -40,7 +41,91 @@ _GREETING_PROMPT = ChatPromptTemplate.from_messages([
 
 # Ensure storage directory exists
 STORAGE_DIR = "backend/storage"
+KB_METADATA_FILE = os.path.join(STORAGE_DIR, "kb_metadata.json")
 os.makedirs(STORAGE_DIR, exist_ok=True)
+
+def save_kb_metadata():
+    """Save permanent knowledge base metadata to disk."""
+    try:
+        kb_session = store.get_session("permanent")
+        data = {
+            "documents": [
+                {
+                    "id": d.id,
+                    "filename": d.filename,
+                    "file_type": d.file_type,
+                    "version": d.version,
+                    "uploaded_at": d.uploaded_at.isoformat() if hasattr(d.uploaded_at, 'isoformat') else str(d.uploaded_at)
+                }
+                for d in kb_session.documents.values()
+            ],
+            "clauses": [
+                {
+                    "id": c.id,
+                    "document_id": c.document_id,
+                    "clause_id": c.clause_id,
+                    "text": c.text,
+                    "page_number": c.page_number,
+                    "severity": c.severity
+                }
+                for c in kb_session.clauses.values()
+            ],
+            "doc_counter": kb_session.doc_counter,
+            "clause_counter": kb_session.clause_counter
+        }
+        
+        # Ensure directory exists just in case
+        os.makedirs(os.path.dirname(KB_METADATA_FILE), exist_ok=True)
+        
+        with open(KB_METADATA_FILE, "w") as f:
+            json.dump(data, f, indent=4)
+        print(f"DEBUG: Successfully saved KB metadata to {KB_METADATA_FILE}")
+        rag_logger.log_system_event("KB_METADATA_SAVE", "INFO", f"Saved {len(data['documents'])} documents to {KB_METADATA_FILE}")
+    except Exception as e:
+        print(f"ERROR: Failed to save KB metadata: {e}")
+        rag_logger.log_system_event("KB_METADATA_SAVE_ERROR", "ERROR", str(e))
+
+def load_kb_metadata():
+    """Load permanent knowledge base metadata from disk."""
+    if not os.path.exists(KB_METADATA_FILE):
+        print("DEBUG: No KB metadata file found.")
+        return
+
+    try:
+        with open(KB_METADATA_FILE, "r") as f:
+            data = json.load(f)
+        
+        kb_session = store.get_session("permanent")
+        
+        # Restore documents
+        for doc_data in data.get("documents", []):
+            doc = Document(
+                id=doc_data["id"],
+                filename=doc_data["filename"],
+                file_type=doc_data["file_type"],
+                version=doc_data["version"],
+                uploaded_at=datetime.fromisoformat(doc_data["uploaded_at"])
+            )
+            kb_session.documents[doc.id] = doc
+        
+        # Restore clauses
+        for clause_data in data.get("clauses", []):
+            clause = Clause(
+                id=clause_data["id"],
+                document_id=clause_data["document_id"],
+                clause_id=clause_data["clause_id"],
+                text=clause_data["text"],
+                page_number=clause_data["page_number"],
+                severity=clause_data["severity"]
+            )
+            kb_session.clauses[clause.id] = clause
+            
+        kb_session.doc_counter = data.get("doc_counter", kb_session.doc_counter)
+        kb_session.clause_counter = data.get("clause_counter", kb_session.clause_counter)
+        
+        print(f"DEBUG: Loaded {len(kb_session.documents)} documents and {len(kb_session.clauses)} clauses from KB metadata.")
+    except Exception as e:
+        print(f"DEBUG: Error loading KB metadata: {e}")
 
 async def session_cleanup_task():
     """Background task to clear inactive sessions after 15 minutes."""
@@ -51,6 +136,10 @@ async def session_cleanup_task():
             sessions_to_purge = []
             
             for session_id, session_data in store.sessions.items():
+                # Skip permanent session from cleanup
+                if session_id == "permanent":
+                    continue
+                    
                 if now - session_data.last_activity > timedelta(minutes=15):
                     sessions_to_purge.append(session_id)
             
@@ -70,6 +159,8 @@ async def session_cleanup_task():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load KB metadata on startup
+    load_kb_metadata()
     # Start cleanup task
     cleanup_task = asyncio.create_task(session_cleanup_task())
     yield
@@ -112,7 +203,15 @@ async def upload_file(
     
     try:
         content = await file.read()
-        doc_id = parse_document(content, file.filename, file_type, version, namespace=namespace, session_id=session_id)
+        doc_id = await asyncio.to_thread(
+            parse_document, 
+            content, 
+            file.filename, 
+            file_type, 
+            version, 
+            namespace=namespace, 
+            session_id=session_id
+        )
         
         # Save the file to physical storage
         file_path = os.path.join(STORAGE_DIR, f"{doc_id}_{file.filename}")
@@ -171,7 +270,8 @@ async def upload_session_file(
         content = await file.read()
         
         # Parse document with session-specific namespace
-        doc_id = parse_document(
+        doc_id = await asyncio.to_thread(
+            parse_document,
             content, 
             file.filename, 
             file_type, 
@@ -284,21 +384,154 @@ def update_document_type(doc_id: int, file_type: str = Form(...), session_id: st
     doc.file_type = file_type
     return {"message": "Document type updated", "file_type": file_type}
 
+# ── Knowledge Base Endpoints ──────────────────────────────────────────────
+
+@app.post("/kb/upload")
+async def upload_kb_file(
+    file: UploadFile = File(...),
+    version: str = Form("1.0")
+):
+    """
+    Upload a file to the permanent knowledge base.
+    """
+    # Check file extension
+    filename_lower = file.filename.lower()
+    if not any(filename_lower.endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Only {', '.join(ALLOWED_EXTENSIONS)} files are supported."
+        )
+    
+    print(f"DEBUG: Uploading {file.filename} to permanent knowledge base")
+    
+    try:
+        content = await file.read()
+        
+        # Parse document with 'permanent' namespace and session ID
+        # Using "permanent" as the session_id ensures it's stored in a dedicated slab in memory
+        doc_id = await asyncio.to_thread(
+            parse_document,
+            content, 
+            file.filename, 
+            file_type="regulation", # KB files are typically regulatory standards
+            version=version, 
+            namespace="permanent", 
+            session_id="permanent"
+        )
+        
+        # Save the file to physical storage
+        file_path = os.path.join(STORAGE_DIR, f"kb_{doc_id}_{file.filename}")
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        # Get the number of clauses for logging
+        doc = store.get_document("permanent", doc_id)
+        num_clauses = len(store.get_clauses_by_document("permanent", doc_id)) if doc else 0
+        
+        # Log successful KB document ingestion
+        rag_logger.log_document_ingestion(
+            session_id="permanent",
+            filename=file.filename,
+            num_clauses=num_clauses,
+            success=True
+        )
+        
+        # Save metadata after successful upload
+        save_kb_metadata()
+        
+        print(f"DEBUG: KB document {file.filename} uploaded, doc_id: {doc_id}")
+        return {"doc_id": doc_id, "filename": file.filename}
+        
+    except Exception as e:
+        rag_logger.log_document_ingestion(
+            session_id="permanent",
+            filename=file.filename,
+            num_clauses=0,
+            success=False,
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to process KB document: {str(e)}")
+
+@app.get("/kb/documents")
+def list_kb_documents():
+    """List all documents in the permanent knowledge base."""
+    docs = store.get_all_documents("permanent")
+    return [
+        {
+            "id": d.id,
+            "filename": d.filename,
+            "file_type": d.file_type,
+            "version": d.version,
+            "uploaded_at": d.uploaded_at.isoformat()
+        }
+        for d in docs
+    ]
+
+
+@app.delete("/kb/documents/{doc_id}")
+def delete_kb_document(doc_id: int):
+    """Delete a document from the permanent knowledge base."""
+    doc = store.get_document("permanent", doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # 1. Clear from Vector DB (Pinecone)
+    # Since we don't have a direct "delete by doc_id" helper that handles Pinecone,
+    # we'll use a hack if needed, or rely on the fato that clear_index is namespace wide.
+    # Actually, Pinecone allows deleting by metadata filter.
+    if rag_engine.use_pinecone:
+        try:
+            pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+            index = pc.Index(rag_engine.index_name)
+            # Delete vectors for this specific document in the permanent namespace
+            index.delete(filter={"doc_id": str(doc_id)}, namespace="permanent")
+            print(f"DEBUG: Deleted vectors for doc_id {doc_id} from Pinecone permanent namespace")
+        except Exception as e:
+            print(f"DEBUG: Pinecone Delete Error: {e}")
+    
+    # 2. Delete from storage
+    for f in os.listdir(STORAGE_DIR):
+        if f.startswith(f"kb_{doc_id}_"):
+            try:
+                os.remove(os.path.join(STORAGE_DIR, f))
+            except Exception as e:
+                print(f"DEBUG: Error deleting file: {e}")
+    
+    # 3. Delete from memory store
+    store.delete_document("permanent", doc_id)
+    
+    # Save metadata after deletion
+    save_kb_metadata()
+    
+    return {"message": "Knowledge base document deleted"}
+
 @app.post("/reset")
 def reset_data(session_id: str = Depends(get_sid)):
     store.reset(session_id)
     rag_engine.clear_index(session_id=session_id)
     return {"message": f"Data cleared for session {session_id}"}
 
+def _parse_kb_ids(kb_ids_str: str) -> List[int]:
+    """Helper to parse KB doc IDs from form data."""
+    if not kb_ids_str or kb_ids_str == "[]":
+        return []
+    try:
+        ids = json.loads(kb_ids_str)
+        return [int(i) for i in ids] if isinstance(ids, list) else []
+    except (json.JSONDecodeError, ValueError):
+        return []
+
 @app.post("/assess")
 async def assess_compliance(
     customer_doc_id: int = Form(...),
     regulation_doc_id: int = Form(...),
     use_kb: bool = Form(False),
+    kb_doc_ids: str = Form("[]"),
     session_id: str = Depends(get_sid)
 ):
     start_time = time.time()
-    print(f"DEBUG: Assessing compliance for session {session_id}. Customer Doc: {customer_doc_id}, Reg Doc: {regulation_doc_id}")
+    kb_ids = _parse_kb_ids(kb_doc_ids)
+    print(f"DEBUG: Assessing compliance for session {session_id}. Customer Doc: {customer_doc_id}, Reg Doc: {regulation_doc_id}, KB IDs: {kb_ids}")
     
     try:
         customer_clauses = store.get_clauses_by_document(session_id, customer_doc_id)
@@ -328,7 +561,12 @@ async def assess_compliance(
         async def process_clause(c_clause):
             async with semaphore:
                 # Retrieve similar regulation clauses
-                similar_docs = rag_engine.retrieve_similar_clauses(c_clause.text, doc_id=regulation_doc_id, use_kb=use_kb, session_id=session_id)
+                similar_docs = rag_engine.retrieve_similar_clauses(
+                    c_clause.text, 
+                    doc_ids=[regulation_doc_id] + kb_ids if use_kb else [regulation_doc_id], 
+                    use_kb=use_kb, 
+                    session_id=session_id
+                )
                 
                 if not similar_docs:
                     return None
@@ -433,6 +671,7 @@ def debug_vector_store(session_id: str = Depends(get_sid)):
 async def chat_with_docs(
     query: str = Form(...),
     use_kb: bool = Form(False),
+    kb_doc_ids: str = Form("[]"),
     has_session_file: str = Form("false"),
     history: str = Form("[]"),
     session_id: str = Depends(get_sid)
@@ -442,7 +681,8 @@ async def chat_with_docs(
     When a file is uploaded, ALWAYS search both sources to provide comprehensive answers.
     """
     start_time = time.time()
-    print(f"DEBUG: Chat query='{query}', use_kb={use_kb}, has_session_file={has_session_file}, session={session_id}")
+    kb_ids = _parse_kb_ids(kb_doc_ids)
+    print(f"DEBUG: Chat query='{query}', use_kb={use_kb}, kb_ids={kb_ids}, has_session_file={has_session_file}, session={session_id}")
     
     # Parse conversation history
     try:
@@ -530,7 +770,8 @@ async def chat_with_docs(
         try:
             kb_results = rag_engine.retrieve_similar_clauses(
                 query, 
-                top_k=4, 
+                top_k=5, 
+                doc_ids=kb_ids if kb_ids else None, 
                 use_kb=True, 
                 session_id=None  # Don't include session docs in KB search
             )

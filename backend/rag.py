@@ -108,7 +108,7 @@ class RAGEngine:
         else:
             self.vector_store = None
 
-    def retrieve_similar_clauses(self, query_text: str, top_k: int = 5, doc_id: int = None, use_kb: bool = False, session_id: str = None):
+    def retrieve_similar_clauses(self, query_text: str, top_k: int = 5, doc_ids: List[int] = None, use_kb: bool = False, session_id: str = None):
         if self.vector_store is None:
             return []
             
@@ -125,24 +125,23 @@ class RAGEngine:
                 try:
                     results = self.vector_store.similarity_search_with_score(
                         query_text, 
-                        k=top_k * 2, 
+                        k=top_k * 4, # Increase k for better filtering after collection
                         namespace=ns
                     )
                     all_results.extend(results)
                 except Exception as e:
                     print(f"DEBUG: Pinecone search error in namespace {ns}: {e}")
             
-            # Re-sort combined results by score (descending for similarity, but score is usually distance)
-            # Pinecone score in similarity_search_with_score is usually similarity (higher is better)
             all_results.sort(key=lambda x: x[1], reverse=True)
         else:
             # FAISS search
-            all_results = self.vector_store.similarity_search_with_score(query_text, k=top_k * 2)
+            all_results = self.vector_store.similarity_search_with_score(query_text, k=top_k * 4)
         
-        if doc_id:
+        if doc_ids:
+            str_doc_ids = [str(did) for did in doc_ids]
             filtered_docs = [
                 (doc, score) for doc, score in all_results 
-                if doc.metadata.get('doc_id') == str(doc_id)
+                if doc.metadata.get('doc_id') in str_doc_ids
             ]
             return filtered_docs[:top_k]
             
@@ -229,35 +228,33 @@ class RAGEngine:
                 history_context += "\nCurrent question refers to this conversation history. Use it to provide contextual answers.\n"
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""You are a helpful compliance assistant with expert knowledge across multiple documents. 
-            Answer the user's question accurately based on the provided context from {context_description}.
-            If the user greets you or asks a casual question (e.g., 'hi', 'how are you'), respond naturally but STRICTLY DO NOT show sources or cite any documents for that specific greeting.
+            ("system", f"""You are a helpful engineering compliance assistant with expert knowledge across multiple documents. 
+            Your goal is to provide **High-Quality Engineering Synthesis**. Do not just repeat snippets; explain the *meaning* and *intent* of the documents.
+
+            CRITICAL SUMMARY RULES:
+            - **Synthesis over Repetition**: Instead of listing fragments, combine them into cohesive paragraphs.
+            - **Metadata Awareness**: If you see version numbers (e.g., "1.0"), identifiers, or headers, recognize them as meta-data. Explain what version the document is, rather than presenting the number as the answer.
+            - **Handling Sparse Context**: If retrieved fragments are sparsely populated or seem like table indices, explain what *type* of data appears to be in that section (e.g., "This section contains technical indices for...").
+            - **Clarity**: Ensure technical terms are preserved, but the surrounding explanation is clear and professional.
+
             IMPORTANT CONTEXT UNDERSTANDING:
-            - 📄 "Your Document" refers to files the user uploaded in this session
-            - 📚 "Knowledge Base" refers to the permanent compliance document library
+            - 📄 "Your Document" refers to files the user uploaded in this session.
+            - 📚 "Knowledge Base" refers to the permanent compliance document library.
             - When you have information from BOTH sources, you should:
-              1. Cross-reference and validate information between them
-              2. Highlight agreements, differences, or complementary details
-              3. Provide verification by citing relevant knowledge base standards/regulations
-              4. Give comprehensive answers that leverage both perspectives
+              1. Cross-reference and validate information between them.
+              2. Highlight agreements, differences, or complementary details.
+              3. Provide verification by citing relevant knowledge base standards/regulations.
             
             CONVERSATION CONTEXT:
-            - You have access to the conversation history - use it to understand references to previous messages
-            - When asked about "my first message" or "previous questions", refer to the conversation history
-            - Provide continuity by referencing earlier parts of the conversation when relevant
+            - You have access to conversation history. Use it to maintain continuity.
+            - Reference earlier parts of the conversation if the user asks for summaries of previous topics.
             
-            CROSS-REFERENCING APPROACH:
-            - If the user asks "Can you verify this?" - compare their document against knowledge base standards
-            - If the user asks about compliance - check their document against regulatory requirements from the knowledge base
-            - Always mention when information is confirmed, contradicted, or supplemented by the other source
-            
-            CITATION STYLE (IMPORTANT):
-            - Use numerical citations in your text whenever you reference a source, e.g., "The network must support 10kV [1]."
-            - DO NOT include a "SOURCES" section at the end of your answer. The sources will be listed separately by the system.
+            CITATION STYLE:
+            - Use numerical citations whenever you reference a specific source, e.g., "The network must support 10kV [1]."
+            - DO NOT include a "SOURCES" section at the end of your answer.
             
             MULTILINGUAL RULES:
-            1. If documents are in different languages, translate and cross-reference appropriately
-            2. Always provide comprehensive answers regardless of source language
+            - If documents are in different languages, translate and cross-reference appropriately.
             
             {history_context}
             

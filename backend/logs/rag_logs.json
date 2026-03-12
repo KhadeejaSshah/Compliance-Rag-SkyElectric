@@ -338,5 +338,257 @@
       "kb_references": 2,
       "total_references": 6
     }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T12:38:10.458605",
+    "event_type": "DOCUMENT_INGESTION",
+    "level": "INFO",
+    "message": "Success: test_kb_doc.csv",
+    "data": {
+      "session_id": "permanent",
+      "filename": "test_kb_doc.csv",
+      "num_clauses": 1,
+      "success": true,
+      "error": null
+    }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T12:39:47.637068",
+    "event_type": "DOCUMENT_INGESTION",
+    "level": "INFO",
+    "message": "Success: test_kb_doc.csv",
+    "data": {
+      "session_id": "permanent",
+      "filename": "test_kb_doc.csv",
+      "num_clauses": 1,
+      "success": true,
+      "error": null
+    }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T12:42:33.536632",
+    "event_type": "DOCUMENT_INGESTION",
+    "level": "INFO",
+    "message": "Success: Test_Case_Plan_JETGR0002_1_16_0_2023.pdf",
+    "data": {
+      "session_id": "permanent",
+      "filename": "Test_Case_Plan_JETGR0002_1_16_0_2023.pdf",
+      "num_clauses": 3,
+      "success": true,
+      "error": null
+    }
+  },
+  {
+    "type": "chat_interaction",
+    "session_id": "e4155570-091f-450a-82a3-8886df8934c1",
+    "timestamp": "2026-03-12T12:42:58.833696",
+    "question": "test case plan JET",
+    "answer": "The provided documents discuss test procedures and concepts related to a remote output control function and system voltage phase change. Specifically, the documents include test methods [2, 3], a test for system voltage phase change [4], and details about units and a test [1].\n\nThe \"Remote Output Control Function Test Methods\" document, identified as JETGR0004-1-2.1 (2023), outlines a copyrighted test procedure protected by copyright and trade secret laws [2, 3]. The document includes a fixed schedule D with control date/time specifications and a control rate [2]. The test involves starting an output controller, updating schedules, interrupting DC input, and verifying the operation of the PCS [2]. The judgment criteria include output stabilization within 30 minutes and output changes from 5% to 100% of the specified output [2].\n\nAnother document, JETGR0002-1-16.0 (2023), mentions a system voltage phase change test [4], and also includes details about units and a test [1].",
+    "sources": [
+      {
+        "id": 1,
+        "title": "JETGR0002-1-16.0 (2023)_GoogleTranslated.pdf",
+        "clause": "9.8",
+        "page": null
+      },
+      {
+        "id": 2,
+        "title": "202312_JETRBC0400_Remote Output Control Function Test Methods_JETGR0004-1-2.1(2023) _ENG.pdf",
+        "clause": "P-21-0",
+        "page": null
+      },
+      {
+        "id": 3,
+        "title": "202312_JETRBC0400_Remote Output Control Function Test Methods_JETGR0004-1-2.1(2023) _ENG.pdf",
+        "clause": "P-37-0",
+        "page": null
+      },
+      {
+        "id": 4,
+        "title": "JETGR0002-1-16.0 (2023)_GoogleTranslated.pdf",
+        "clause": "5.3",
+        "page": null
+      }
+    ],
+    "metadata": {
+      "session_id": "e4155570-091f-450a-82a3-8886df8934c1",
+      "timestamp": "2026-03-12T12:42:58.833696",
+      "response_time_seconds": 7.030836820602417,
+      "use_knowledge_base": true,
+      "has_session_file": false,
+      "sources_count": 4,
+      "question_length": 18,
+      "answer_length": 986,
+      "interaction_type": "successful_query",
+      "context_description": "the knowledge base (4 references)",
+      "session_references": 0,
+      "kb_references": 4,
+      "total_references": 4
+    }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T12:43:23.896533",
+    "event_type": "DOCUMENT_INGESTION",
+    "level": "INFO",
+    "message": "Success: M Farrukh Tahir CV.pdf",
+    "data": {
+      "session_id": "permanent",
+      "filename": "M Farrukh Tahir CV.pdf",
+      "num_clauses": 1,
+      "success": true,
+      "error": null
+    }
+  },
+  {
+    "type": "chat_interaction",
+    "session_id": "e4155570-091f-450a-82a3-8886df8934c1",
+    "timestamp": "2026-03-12T12:43:37.238874",
+    "question": "Farrukh's skiillls",
+    "answer": "Mohammad Farrukh Tahir's resume highlights his skills and experience in computer engineering and related fields [1]. He has a strong educational background, including a Bachelor's in Computer Science with a GPA of 3.76, and has participated in a DNN Bootcamp [1]. His experience includes instructing students, leading development teams, and participating in the Huawei Seeds For The Future Program [1].\n\nFarrukh's technical skills encompass proficiency in multiple programming languages such as Java, Python, C/C++, SQL, JavaScript, HTML/CSS, and experience with frameworks like React, Node.js, and TensorFlow [1]. He has also worked with developer tools like Git, VS Code, and IntelliJ, and libraries such as pandas and NumPy [1]. His projects demonstrate his ability to apply these skills in real-world scenarios, including predictive modeling, application development using OpenCV, and IoT solutions [1].",
+    "sources": [
+      {
+        "id": 1,
+        "title": "M Farrukh Tahir CV.pdf",
+        "clause": "P-0-0",
+        "page": null
+      },
+      {
+        "id": 2,
+        "title": "jis_c_60664_001_000_2009_j_ed10_ch.pdf",
+        "clause": "5.0",
+        "page": null
+      },
+      {
+        "id": 3,
+        "title": "jis_c_62477_001_000_2017_j_ed10_ch.pdf",
+        "clause": "0.76",
+        "page": null
+      },
+      {
+        "id": 4,
+        "title": "jis_c_06950_001_000_2016_j_ed11_ch.pdf",
+        "clause": "0.76",
+        "page": null
+      }
+    ],
+    "metadata": {
+      "session_id": "e4155570-091f-450a-82a3-8886df8934c1",
+      "timestamp": "2026-03-12T12:43:37.238874",
+      "response_time_seconds": 5.294494390487671,
+      "use_knowledge_base": true,
+      "has_session_file": false,
+      "sources_count": 4,
+      "question_length": 18,
+      "answer_length": 907,
+      "interaction_type": "successful_query",
+      "context_description": "the knowledge base (4 references)",
+      "session_references": 0,
+      "kb_references": 4,
+      "total_references": 4
+    }
+  },
+  {
+    "type": "chat_interaction",
+    "session_id": "e4155570-091f-450a-82a3-8886df8934c1",
+    "timestamp": "2026-03-12T12:43:55.437622",
+    "question": "Farrukh university?",
+    "answer": "Mohammad Farrukh Tahir obtained his Bachelor's in Computer Science from the Institute of Management Sciences, Peshawar, Pakistan, with a CGPA of 3.76, from August 2020 to August 2024 [1]. He also participated in a DNN Bootcamp at the GIK Institute in Swabi, Pakistan [1]. Additionally, he has experience as a Computer Engineer at GIK Institute of Engineering Sciences and Technology (GIKI) Topi, Pakistan [1].",
+    "sources": [
+      {
+        "id": 1,
+        "title": "M Farrukh Tahir CV.pdf",
+        "clause": "P-0-0",
+        "page": null
+      },
+      {
+        "id": 2,
+        "title": "JETGR0002-1-16.0 (2023)_GoogleTranslated.pdf",
+        "clause": "42.67",
+        "page": null
+      },
+      {
+        "id": 3,
+        "title": "JETGR0002-1-16.0 (2023)_GoogleTranslated.pdf",
+        "clause": "42.67",
+        "page": null
+      },
+      {
+        "id": 4,
+        "title": "jis_c_60664_001_000_2009_j_ed10_ch.pdf",
+        "clause": "48.8",
+        "page": null
+      }
+    ],
+    "metadata": {
+      "session_id": "e4155570-091f-450a-82a3-8886df8934c1",
+      "timestamp": "2026-03-12T12:43:55.437622",
+      "response_time_seconds": 4.673956394195557,
+      "use_knowledge_base": true,
+      "has_session_file": false,
+      "sources_count": 4,
+      "question_length": 19,
+      "answer_length": 409,
+      "interaction_type": "successful_query",
+      "context_description": "the knowledge base (4 references)",
+      "session_references": 0,
+      "kb_references": 4,
+      "total_references": 4
+    }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T13:01:55.243109",
+    "event_type": "DOCUMENT_INGESTION",
+    "level": "INFO",
+    "message": "Success: M Farrukh Tahir CV.pdf",
+    "data": {
+      "session_id": "permanent",
+      "filename": "M Farrukh Tahir CV.pdf",
+      "num_clauses": 1,
+      "success": true,
+      "error": null
+    }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T13:01:55.245192",
+    "event_type": "KB_METADATA_SAVE",
+    "level": "SAVED 1 DOCUMENTS TO BACKEND/STORAGE/KB_METADATA.JSON",
+    "message": "INFO",
+    "data": {}
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T13:02:29.844004",
+    "event_type": "KB_METADATA_SAVE",
+    "level": "SAVED 0 DOCUMENTS TO BACKEND/STORAGE/KB_METADATA.JSON",
+    "message": "INFO",
+    "data": {}
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T13:03:14.681234",
+    "event_type": "DOCUMENT_INGESTION",
+    "level": "INFO",
+    "message": "Success: test.csv",
+    "data": {
+      "session_id": "permanent",
+      "filename": "test.csv",
+      "num_clauses": 1,
+      "success": true,
+      "error": null
+    }
+  },
+  {
+    "type": "system_event",
+    "timestamp": "2026-03-12T13:03:14.683214",
+    "event_type": "KB_METADATA_SAVE",
+    "level": "SAVED 1 DOCUMENTS TO BACKEND/STORAGE/KB_METADATA.JSON",
+    "message": "INFO",
+    "data": {}
   }
 ]

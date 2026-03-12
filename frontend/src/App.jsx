@@ -39,7 +39,7 @@ function App() {
     if (activeChatId && !chatHistory.some(chat => chat.id === activeChatId)) {
       setActiveChatId(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only on mount to validate initial state
 
   // Save chat history to localStorage whenever it changes
@@ -127,30 +127,32 @@ function App() {
     const currentChatId = chatId || activeChatId;
 
     if (currentChatId) {
-        setChatHistory(prev => {
-            const updatedHistory = prev.map(chat =>
-                chat.id === currentChatId
-                    ? { ...chat, messages: [...chat.messages, message] }
-                    : chat
-            );
-            const currentChat = updatedHistory.find(chat => chat.id === currentChatId);
-            const otherChats = updatedHistory.filter(chat => chat.id !== currentChatId);
-            // Ensure chat exists before moving it
-            if (!currentChat) return prev;
-            return [currentChat, ...otherChats];
-        });
-        return currentChatId;
+      setChatHistory(prev => {
+        const updatedHistory = prev.map(chat =>
+          chat.id === currentChatId
+            ? { ...chat, messages: [...chat.messages, message] }
+            : chat
+        );
+        const currentChat = updatedHistory.find(chat => chat.id === currentChatId);
+        const otherChats = updatedHistory.filter(chat => chat.id !== currentChatId);
+        // Ensure chat exists before moving it
+        if (!currentChat) return prev;
+        return [currentChat, ...otherChats];
+      });
+      return currentChatId;
     } else {
-        // Create a new chat
-        const newChatId = crypto.randomUUID();
-        setChatHistory(prev => [{ id: newChatId, messages: [message] }, ...prev]);
-        setActiveChatId(newChatId);
-        return newChatId;
+      // Create a new chat
+      const newChatId = crypto.randomUUID();
+      setChatHistory(prev => [{ id: newChatId, messages: [message] }, ...prev]);
+      setActiveChatId(newChatId);
+      return newChatId;
     }
   };
 
   const activeChat = chatHistory.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
+
+  const [selectedKbIds, setSelectedKbIds] = useState([]);
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', background: '#f9fafb' }}>
@@ -162,6 +164,8 @@ function App() {
         assessmentId={assessmentId}
         mode={mode}
         useKb={useKb}
+        selectedKbIds={selectedKbIds}
+        onSelectedKbIdsChange={setSelectedKbIds}
         chatHistory={chatHistory}
         activeChatId={activeChatId}
         onSelectChat={handleSelectChat}
@@ -174,9 +178,10 @@ function App() {
 
         <div style={{ flex: 1, position: 'relative' }}>
           <div style={{ width: '100%', height: '100%', padding: '40px', display: 'flex', justifyContent: 'center' }}>
-            <ChatDialog 
-              isFullScreen={true} 
+            <ChatDialog
+              isFullScreen={true}
               useKb={useKb}
+              selectedKbIds={selectedKbIds}
               messages={messages}
               onSendMessage={handleSendMessage}
               onNewChat={handleNewChat}
