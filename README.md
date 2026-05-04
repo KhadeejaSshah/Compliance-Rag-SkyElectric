@@ -1,6 +1,6 @@
 # 🌌 Compliance Intelligence Galaxy
 ### 3D RAG-Powered Compliance Analysis & Visualization
-### SkyElectric
+### SkyElectric Inc
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
