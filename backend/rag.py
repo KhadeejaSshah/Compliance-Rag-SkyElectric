@@ -20,8 +20,7 @@ class RAGEngine:
     def __init__(self):
         # Using Gemini-2.5-flash for enhanced performance and efficiency
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            output_dimensionality=768
+            model="models/gemini-embedding-001"
         )
         self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5)
         self.use_pinecone = USE_PINECONE
